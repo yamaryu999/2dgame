@@ -202,22 +202,22 @@ class Game {
     generateStage1() {
         // 地面
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, GAME_CONFIG.CANVAS_WIDTH, 20));
-        
-        // 浮遊プラットフォーム
+            
+            // 浮遊プラットフォーム
         this.platforms.push(new Platform(200, 450, 120, 20));
         this.platforms.push(new Platform(400, 350, 120, 20));
         this.platforms.push(new Platform(600, 250, 120, 20));
         this.platforms.push(new Platform(300, 150, 120, 20));
-        
-        // 移動プラットフォーム
+            
+            // 移動プラットフォーム
         this.platforms.push(new Platform(100, 300, 100, 20, 'moving'));
-        
-        // 破壊可能プラットフォーム
+            
+            // 破壊可能プラットフォーム
         this.platforms.push(new Platform(500, 400, 80, 20, 'breakable'));
 
-        // 敵
-        this.enemies.push(new Enemy(300, 400));
-        this.enemies.push(new Enemy(500, 200));
+        // 敵（タイプを混在）
+        this.enemies.push(new Enemy(300, 400, 'basic'));
+        this.enemies.push(new Enemy(500, 200, 'jumper'));
 
         // コイン
         this.coins.push(new Coin(250, 400));
@@ -250,10 +250,10 @@ class Game {
         this.platforms.push(new Platform(750, 250, 100, 20, 'moving'));
 
         // 敵
-        this.enemies.push(new Enemy(400, 350));
-        this.enemies.push(new Enemy(700, 250));
-        this.enemies.push(new Enemy(1000, 150));
-        this.enemies.push(new Enemy(1300, 300));
+        this.enemies.push(new Enemy(400, 350, 'basic'));
+        this.enemies.push(new Enemy(700, 250, 'chaser'));
+        this.enemies.push(new Enemy(1000, 150, 'jumper'));
+        this.enemies.push(new Enemy(1300, 300, 'tank'));
 
         // コイン
         this.coins.push(new Coin(350, 350));
@@ -292,12 +292,12 @@ class Game {
         this.platforms.push(new Platform(1100, 100, 80, 20, 'moving'));
 
         // 敵
-        this.enemies.push(new Enemy(250, 400));
-        this.enemies.push(new Enemy(450, 300));
-        this.enemies.push(new Enemy(650, 200));
-        this.enemies.push(new Enemy(850, 100));
-        this.enemies.push(new Enemy(1050, 250));
-        this.enemies.push(new Enemy(1250, 150));
+        this.enemies.push(new Enemy(250, 400, 'basic'));
+        this.enemies.push(new Enemy(450, 300, 'chaser'));
+        this.enemies.push(new Enemy(650, 200, 'jumper'));
+        this.enemies.push(new Enemy(850, 100, 'flyer'));
+        this.enemies.push(new Enemy(1050, 250, 'tank'));
+        this.enemies.push(new Enemy(1250, 150, 'basic'));
 
         // コイン
         this.coins.push(new Coin(250, 400));
@@ -343,14 +343,14 @@ class Game {
         this.platforms.push(new Platform(1450, 350, 60, 20, 'moving'));
 
         // 敵
-        this.enemies.push(new Enemy(200, 400));
-        this.enemies.push(new Enemy(400, 300));
-        this.enemies.push(new Enemy(600, 200));
-        this.enemies.push(new Enemy(800, 100));
-        this.enemies.push(new Enemy(1000, 250));
-        this.enemies.push(new Enemy(1200, 150));
-        this.enemies.push(new Enemy(1400, 350));
-        this.enemies.push(new Enemy(1600, 200));
+        this.enemies.push(new Enemy(200, 400, 'basic'));
+        this.enemies.push(new Enemy(400, 300, 'jumper'));
+        this.enemies.push(new Enemy(600, 200, 'chaser'));
+        this.enemies.push(new Enemy(800, 100, 'flyer'));
+        this.enemies.push(new Enemy(1000, 250, 'tank'));
+        this.enemies.push(new Enemy(1200, 150, 'basic'));
+        this.enemies.push(new Enemy(1400, 350, 'chaser'));
+        this.enemies.push(new Enemy(1600, 200, 'jumper'));
 
         // コイン
         this.coins.push(new Coin(200, 400));
@@ -401,16 +401,16 @@ class Game {
         this.platforms.push(new Platform(1800, 250, 50, 20, 'moving'));
 
         // 敵
-        this.enemies.push(new Enemy(150, 400));
-        this.enemies.push(new Enemy(350, 300));
-        this.enemies.push(new Enemy(550, 200));
-        this.enemies.push(new Enemy(750, 100));
-        this.enemies.push(new Enemy(950, 250));
-        this.enemies.push(new Enemy(1150, 150));
-        this.enemies.push(new Enemy(1350, 350));
-        this.enemies.push(new Enemy(1550, 200));
-        this.enemies.push(new Enemy(1750, 300));
-        this.enemies.push(new Enemy(1950, 150));
+        this.enemies.push(new Enemy(150, 400, 'basic'));
+        this.enemies.push(new Enemy(350, 300, 'chaser'));
+        this.enemies.push(new Enemy(550, 200, 'jumper'));
+        this.enemies.push(new Enemy(750, 100, 'flyer'));
+        this.enemies.push(new Enemy(950, 250, 'tank'));
+        this.enemies.push(new Enemy(1150, 150, 'basic'));
+        this.enemies.push(new Enemy(1350, 350, 'chaser'));
+        this.enemies.push(new Enemy(1550, 200, 'jumper'));
+        this.enemies.push(new Enemy(1750, 300, 'flyer'));
+        this.enemies.push(new Enemy(1950, 150, 'tank'));
 
         // コイン
         this.coins.push(new Coin(150, 400));
@@ -524,7 +524,11 @@ class Game {
         // 多数の移動足場
         for (let i = 0; i < 8; i++) this.platforms.push(new Platform(600 + i * 500, 220 + (i % 3) * 60, 70, 18, 'moving'));
         // 敵を密集配置
-        for (let i = 0; i < 12; i++) this.enemies.push(new Enemy(500 + i * 350, 240));
+        for (let i = 0; i < 12; i++) {
+            const types = ['basic', 'chaser', 'jumper', 'flyer', 'tank'];
+            const t = types[i % types.length];
+            this.enemies.push(new Enemy(500 + i * 350, 240, t));
+        }
         // コイン大量
         for (let i = 0; i < 20; i++) this.coins.push(new Coin(300 + i * 220, 200 + (i % 3) * 60));
         // パワーアップを複数
@@ -608,7 +612,7 @@ class Game {
         if (this.enemies && Array.isArray(this.enemies)) {
             this.enemies.forEach(enemy => {
                 if (enemy && typeof enemy.update === 'function') {
-                    enemy.update(this.deltaTime, this.platforms);
+                    enemy.update(this.deltaTime, this.platforms, this.player);
                 }
             });
         }

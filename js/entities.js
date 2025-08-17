@@ -478,11 +478,13 @@ class Player {
         this.velocity.y = PHYSICS.JUMP_FORCE * 0.7; // 小さなジャンプ
         this.score += 20;
         
-        // 敵撃破エフェクト
-        this.createEnemyDefeatEffect(enemy);
-        // 敵を撃破状態にする
         if (enemy) {
-            enemy.isDead = true;
+            // 体力制の敵に対応
+            const died = typeof enemy.takeHit === 'function' ? enemy.takeHit() : true;
+            if (died) {
+                // 敵撃破エフェクト
+                this.createEnemyDefeatEffect(enemy);
+            }
         }
     }
 
@@ -684,48 +686,131 @@ class Enemy {
         this.startX = x;
         this.animation = this.createAnimation();
         this.isDead = false;
+        // タイプ別パラメータ
+        this.health = this.type === 'tank' ? 3 : 1;
+        this.jumpCooldown = 1000 + Math.random() * 800; // jumper用
+        this.jumpTimer = 0;
+        this.detectionRange = 220; // chaser用
+        this.flyTime = 0;          // flyer用
+        this.amplitude = 28;       // flyerの上下振幅
+        this.flySpeed = GAME_CONFIG.ENEMY_SPEED * 0.9;
     }
 
     createAnimation() {
-        // ネズミ風のグレーカラー
+        // タイプに応じた色味
+        let palette;
+        switch (this.type) {
+            case 'jumper':
+                palette = ['#8ED1C4', '#A7E3D5', '#8ED1C4', '#76BDAF'];
+                break;
+            case 'chaser':
+                palette = ['#C39BD3', '#D2B7E5', '#C39BD3', '#A66BBE'];
+                break;
+            case 'flyer':
+                palette = ['#93C5FD', '#BFDBFE', '#93C5FD', '#60A5FA'];
+                break;
+            case 'tank':
+                palette = ['#7D8590', '#9AA1AA', '#7D8590', '#5D636B'];
+                break;
+            default:
+                palette = ['#A3A7AE', '#B5BAC3', '#A3A7AE', '#8F949C'];
+        }
         const frames = [
-            { color: '#A3A7AE', offset: 0 },
-            { color: '#B5BAC3', offset: 0 },
-            { color: '#A3A7AE', offset: 0 },
-            { color: '#8F949C', offset: 0 }
+            { color: palette[0], offset: 0 },
+            { color: palette[1], offset: 0 },
+            { color: palette[2], offset: 0 },
+            { color: palette[3], offset: 0 }
         ];
         return new Animation(frames, 200);
     }
 
-    update(deltaTime, platforms) {
+    update(deltaTime, platforms, player) {
         if (this.isDead) return;
 
         this.animation.update(deltaTime);
-
-        // パトロール移動
-        this.x += this.velocity.x * this.direction;
-
-        // パトロール範囲チェック
-        if (this.x <= this.startX - this.patrolDistance || 
-            this.x >= this.startX + this.patrolDistance) {
-            this.direction *= -1;
+        
+        switch (this.type) {
+            case 'jumper': {
+                // パトロール + 定期ジャンプ
+                this.x += GAME_CONFIG.ENEMY_SPEED * 0.8 * this.direction;
+                if (this.x <= this.startX - this.patrolDistance || this.x >= this.startX + this.patrolDistance) {
+                    this.direction *= -1;
+                }
+                this.jumpTimer += deltaTime;
+                if (this.jumpTimer >= this.jumpCooldown) {
+                    this.jumpTimer = 0;
+                    this.velocity.y = PHYSICS.JUMP_FORCE * 0.7;
+                }
+                this.velocity.y += PHYSICS.GRAVITY;
+                this.velocity.y = Utils.clamp(this.velocity.y, -10, PHYSICS.MAX_FALL_SPEED);
+                this.y += this.velocity.y;
+                this.checkPlatformCollisions(platforms);
+                this.checkBounds();
+                break;
+            }
+            case 'chaser': {
+                // プレイヤーを検知したら加速して追尾
+                let speed = GAME_CONFIG.ENEMY_SPEED * 1.1;
+                if (player) {
+                    const dx = player.x - this.x;
+                    const dy = Math.abs(player.y - this.y);
+                    if (Math.abs(dx) < this.detectionRange && dy < 80) {
+                        this.direction = dx >= 0 ? 1 : -1;
+                        speed = GAME_CONFIG.ENEMY_SPEED * 1.6;
+                    } else if (this.x <= this.startX - this.patrolDistance || this.x >= this.startX + this.patrolDistance) {
+                        this.direction *= -1;
+                    }
+                }
+                this.x += speed * this.direction;
+                this.velocity.y += PHYSICS.GRAVITY;
+                this.velocity.y = Utils.clamp(this.velocity.y, -10, PHYSICS.MAX_FALL_SPEED);
+                this.y += this.velocity.y;
+                this.checkPlatformCollisions(platforms);
+                this.checkBounds();
+                break;
+            }
+            case 'flyer': {
+                // ふわふわ飛行（重力なし）
+                this.flyTime += deltaTime;
+                this.x += this.flySpeed * this.direction;
+                this.y = this.originalY + Math.sin(this.flyTime * 0.005) * this.amplitude;
+                if (this.x <= this.startX - this.patrolDistance || this.x >= this.startX + this.patrolDistance) {
+                    this.direction *= -1;
+                }
+                this.checkBounds();
+                break;
+            }
+            case 'tank': {
+                // 低速・高耐久
+                this.x += (GAME_CONFIG.ENEMY_SPEED * 0.6) * this.direction;
+                if (this.x <= this.startX - (this.patrolDistance * 0.8) || this.x >= this.startX + (this.patrolDistance * 0.8)) {
+                    this.direction *= -1;
+                }
+                this.velocity.y += PHYSICS.GRAVITY;
+                this.velocity.y = Utils.clamp(this.velocity.y, -10, PHYSICS.MAX_FALL_SPEED);
+                this.y += this.velocity.y;
+                this.checkPlatformCollisions(platforms);
+                this.checkBounds();
+                break;
+            }
+            default: {
+                // basic: 既存のパトロール
+                this.x += this.velocity.x * this.direction;
+                if (this.x <= this.startX - this.patrolDistance || this.x >= this.startX + this.patrolDistance) {
+                    this.direction *= -1;
+                }
+                this.velocity.y += PHYSICS.GRAVITY;
+                this.velocity.y = Utils.clamp(this.velocity.y, -10, PHYSICS.MAX_FALL_SPEED);
+                this.y += this.velocity.y;
+                this.checkPlatformCollisions(platforms);
+                this.checkBounds();
+            }
         }
-
-        // 重力適用
-        this.velocity.y += PHYSICS.GRAVITY;
-        this.velocity.y = Utils.clamp(this.velocity.y, -10, PHYSICS.MAX_FALL_SPEED);
-
-        this.y += this.velocity.y;
-
-        // プラットフォームコリジョン
-        this.checkPlatformCollisions(platforms);
-
-        // 境界チェック
-        this.checkBounds();
     }
 
     checkPlatformCollisions(platforms) {
         if (!platforms || !Array.isArray(platforms)) return;
+        if (this.type === 'flyer') return;
         
         platforms.forEach(platform => {
             if (!platform) return;
@@ -754,9 +839,19 @@ class Enemy {
         }
 
         // 下の境界（落下判定）
-        if (this.y > GAME_CONFIG.CANVAS_HEIGHT) {
+        if (this.type !== 'flyer' && this.y > GAME_CONFIG.CANVAS_HEIGHT) {
             this.isDead = true;
         }
+    }
+
+    takeHit() {
+        if (this.isDead) return true;
+        this.health -= 1;
+        if (this.health <= 0) {
+            this.isDead = true;
+            return true;
+        }
+        return false;
     }
 
     render(ctx) {
@@ -1123,3 +1218,4 @@ class Background {
         });
     }
 }
+
