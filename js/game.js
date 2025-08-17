@@ -35,6 +35,14 @@ class Game {
         this.deltaTime = 0;
         this.frameCount = 0;
         this.fps = 0;
+
+        // ステージクリア演出
+        this.stageClear = {
+            active: false,
+            timer: 0,
+            duration: 2000,
+            particles: []
+        };
         
         // UI要素
         this.scoreElement = null;
@@ -577,6 +585,13 @@ class Game {
         // カメラスクロール更新
         this.updateCamera();
 
+        // ステージクリア演出中はゲーム進行を一時停止
+        if (this.stageClear.active) {
+            this.updateStageClear();
+            this.render();
+            return;
+        }
+
         // ステージ進行チェック
         this.checkStageProgress();
 
@@ -656,7 +671,7 @@ class Game {
 
         // プレイヤーがステージの右端に到達したら次のステージへ
         if (this.player.x >= currentStageWidth - 100) {
-            this.nextStage();
+            this.startStageClear();
         }
     }
 
@@ -683,6 +698,84 @@ class Game {
         } else {
             // 最終ステージクリア
             this.showGameClear();
+        }
+    }
+
+    /**
+     * ステージクリア演出開始
+     */
+    startStageClear() {
+        if (this.stageClear.active) return;
+        this.stageClear.active = true;
+        this.stageClear.timer = this.stageClear.duration;
+        this.stageClear.particles = [];
+
+        // フラッシュ効果
+        const flash = document.createElement('div');
+        flash.style.cssText = `
+            position: fixed; inset: 0; background: white; opacity: 0.0; pointer-events: none; z-index: 999;
+            transition: opacity 150ms ease;
+        `;
+        document.body.appendChild(flash);
+        requestAnimationFrame(() => { flash.style.opacity = '0.8'; });
+        setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 200); }, 180);
+
+        // 祝福ポップアップ
+        const popup = document.createElement('div');
+        popup.style.cssText = `
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.95);
+            background: rgba(2, 6, 23, 0.85); color: white; padding: 18px 22px; border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(8px); z-index: 1000; text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.35); font-weight: 700; letter-spacing: .2px; opacity: 0; transition: all 200ms ease;
+        `;
+        popup.innerHTML = `ステージ ${this.currentStage} クリア！`;
+        document.body.appendChild(popup);
+        requestAnimationFrame(() => { popup.style.opacity = '1'; popup.style.transform = 'translate(-50%, -50%) scale(1)'; });
+        setTimeout(() => popup.remove(), this.stageClear.duration);
+
+        // プレイヤー周りに簡易パーティクル（花吹雪風）
+        for (let i = 0; i < 50; i++) {
+            this.stageClear.particles.push({
+                x: this.player.x + Math.random() * 40 - 20,
+                y: this.player.y - 10 + Math.random() * 20 - 10,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: -Math.random() * 2 - 0.5,
+                life: 1,
+                color: ['#FDE68A', '#FCA5A5', '#A7F3D0'][Math.floor(Math.random() * 3)]
+            });
+        }
+    }
+
+    /**
+     * ステージクリア演出の更新と描画
+     */
+    updateStageClear() {
+        const dt = this.deltaTime / 1000;
+        this.stageClear.timer -= this.deltaTime;
+        this.stageClear.particles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.02; // 重力
+            p.life -= dt * 0.6;
+        });
+        this.stageClear.particles = this.stageClear.particles.filter(p => p.life > 0);
+
+        // クリア演出のオーバーレイ描画
+        this.render();
+        this.ctx.save();
+        this.ctx.translate(-this.cameraX, -this.cameraY);
+        this.stageClear.particles.forEach(p => {
+            this.ctx.globalAlpha = Math.max(0, p.life);
+            this.ctx.fillStyle = p.color;
+            this.ctx.beginPath();
+            this.ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
+        this.ctx.restore();
+
+        if (this.stageClear.timer <= 0) {
+            this.stageClear.active = false;
+            this.nextStage();
         }
     }
 
