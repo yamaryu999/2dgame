@@ -710,6 +710,11 @@ class Game {
         this.stageClear.timer = this.stageClear.duration;
         this.stageClear.particles = [];
 
+        // プレイヤーの喜びアニメーション開始
+        if (this.player && typeof this.player.startCelebration === 'function') {
+            this.player.startCelebration(this.stageClear.duration);
+        }
+
         // フラッシュ効果
         const flash = document.createElement('div');
         flash.style.cssText = `
@@ -752,6 +757,9 @@ class Game {
     updateStageClear() {
         const dt = this.deltaTime / 1000;
         this.stageClear.timer -= this.deltaTime;
+        if (this.player && typeof this.player.updateCelebrate === 'function') {
+            this.player.updateCelebrate(this.deltaTime);
+        }
         this.stageClear.particles.forEach(p => {
             p.x += p.vx;
             p.y += p.vy;

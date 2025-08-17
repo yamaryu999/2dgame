@@ -31,6 +31,14 @@ class Player {
         
         this.animation = this.createAnimation();
         this.particleSystem = new ParticleSystem();
+
+        // 祝福アニメーション状態
+        this.celebrate = {
+            active: false,
+            timer: 0,
+            duration: 2000,
+            wave: 0
+        };
     }
 
     createAnimation() {
@@ -222,6 +230,38 @@ class Player {
         this.updatePowerUps(deltaTime);
 
         // パーティクル更新
+        this.particleSystem.update(deltaTime);
+    }
+
+    /**
+     * 祝福アニメーション開始
+     */
+    startCelebration(durationMs) {
+        this.celebrate.active = true;
+        this.celebrate.timer = 0;
+        this.celebrate.duration = durationMs || 2000;
+        this.celebrate.wave = 0;
+        // 停止させる
+        this.velocity.x = 0;
+        // 小さな花びらパーティクル
+        for (let i = 0; i < 16; i++) {
+            const angle = (i / 16) * Math.PI * 2;
+            const v = new Vector2(Math.cos(angle) * 1.2, Math.sin(angle) * -0.6 - 0.5);
+            this.particleSystem.createParticle(this.x + this.width / 2, this.y + this.height / 2, '#FDE68A', v);
+        }
+    }
+
+    /**
+     * 祝福アニメーション更新（ゲーム側のクリア演出中に呼ばれる）
+     */
+    updateCelebrate(deltaTime) {
+        if (!this.celebrate.active) return;
+        this.celebrate.timer += deltaTime;
+        this.celebrate.wave += deltaTime * 0.02;
+        if (this.celebrate.timer >= this.celebrate.duration) {
+            this.celebrate.active = false;
+        }
+        // パーティクルも更新
         this.particleSystem.update(deltaTime);
     }
 
@@ -509,7 +549,9 @@ class Player {
         
         // 猫キャラクターの描画（当たり判定サイズは維持）
         const x = this.x;
-        const y = this.y + frame.offset;
+        // 祝福中は上下に軽くバウンド
+        const celebrateOffset = this.celebrate.active ? Math.sin(this.celebrate.wave * Math.PI * 2) * -3 : 0;
+        const y = this.y + frame.offset + celebrateOffset;
         const w = this.width;
         const h = this.height;
 
@@ -528,28 +570,37 @@ class Player {
         ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // 耳（三角形）
+        // 耳（三角形） - 祝福中は少し傾ける
         ctx.beginPath();
-        ctx.moveTo(x + w * 0.2, y + h * 0.15);
-        ctx.lineTo(x + w * 0.35, y + h * 0.05);
+        ctx.moveTo(x + w * 0.2, y + h * 0.15 + (this.celebrate.active ? -1 : 0));
+        ctx.lineTo(x + w * 0.35, y + h * 0.05 + (this.celebrate.active ? -2 : 0));
         ctx.lineTo(x + w * 0.35, y + h * 0.25);
         ctx.closePath();
         ctx.fill();
         ctx.beginPath();
-        ctx.moveTo(x + w * 0.8, y + h * 0.15);
-        ctx.lineTo(x + w * 0.65, y + h * 0.05);
+        ctx.moveTo(x + w * 0.8, y + h * 0.15 + (this.celebrate.active ? -1 : 0));
+        ctx.lineTo(x + w * 0.65, y + h * 0.05 + (this.celebrate.active ? -2 : 0));
         ctx.lineTo(x + w * 0.65, y + h * 0.25);
         ctx.closePath();
         ctx.fill();
 
         // 顔（目・ひげ）
-        const eyeR = 3;
         const eyeY = y + h * 0.38;
-        ctx.fillStyle = '#111';
-        ctx.beginPath();
-        ctx.arc(x + w * 0.4, eyeY, eyeR, 0, Math.PI * 2);
-        ctx.arc(x + w * 0.6, eyeY, eyeR, 0, Math.PI * 2);
-        ctx.fill();
+        if (this.celebrate.active) {
+            // にっこり目（^ ^）
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x + w * 0.4, eyeY, 3, Math.PI * 0.15, Math.PI * 0.85);
+            ctx.arc(x + w * 0.6, eyeY, 3, Math.PI * 0.15, Math.PI * 0.85);
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.arc(x + w * 0.4, eyeY, 3, 0, Math.PI * 2);
+            ctx.arc(x + w * 0.6, eyeY, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // 鼻
         ctx.fillStyle = '#E76F51';
@@ -570,6 +621,16 @@ class Player {
         ctx.moveTo(x + w * 0.65, eyeY + 8);
         ctx.lineTo(x + w * 0.82, eyeY + 10);
         ctx.stroke();
+
+        // 祝福中の両手を上げる演出（小さな肉球）
+        if (this.celebrate.active) {
+            ctx.fillStyle = '#F5CBA7';
+            const pawY = y + h * 0.2 + Math.sin(this.celebrate.wave * 8) * 2;
+            ctx.beginPath();
+            ctx.arc(x + w * 0.25, pawY, 3, 0, Math.PI * 2);
+            ctx.arc(x + w * 0.75, pawY, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
         
         ctx.restore();
         
