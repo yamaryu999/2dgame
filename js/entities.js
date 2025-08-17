@@ -213,6 +213,7 @@ class Player {
 
         // 風（環境）
         const windX = env ? env.windX : 0;
+        const dtScale = (deltaTime / (1000 / GAME_CONFIG.FPS) || 1);
         if (windX !== 0) {
             this.velocity.x += windX * dtScale;
             this.velocity.x = Utils.clamp(this.velocity.x, -PHYSICS.MAX_SPEED, PHYSICS.MAX_SPEED);
