@@ -1,0 +1,935 @@
+/**
+ * ゲームエンティティクラス
+ * プレイヤー、敵、コイン、プラットフォームなどのゲームオブジェクトを定義
+ */
+
+/**
+ * プレイヤークラス
+ */
+class Player {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 32;
+        this.height = 32;
+        this.velocity = new Vector2(0, 0);
+        this.isOnGround = false;
+        this.facingRight = true;
+        this.lives = 3;
+        this.score = 0;
+        this.invulnerable = false;
+        this.invulnerableTime = 0;
+        this.jumpPressed = false;  // ジャンプボタンの状態
+        
+        // パワーアップ状態
+        this.powerUps = {
+            jumpBoost: false,
+            jumpBoostTime: 0,
+            invincible: false,
+            invincibleTime: 0
+        };
+        
+        this.animation = this.createAnimation();
+        this.particleSystem = new ParticleSystem();
+    }
+
+    createAnimation() {
+        // プレイヤーのアニメーションフレーム（簡易版）
+        const frames = [
+            { color: '#4A90E2', offset: 0 },
+            { color: '#4A90E2', offset: 2 },
+            { color: '#4A90E2', offset: 0 },
+            { color: '#4A90E2', offset: -2 }
+        ];
+        return new Animation(frames, 150);
+    }
+
+    /**
+     * 改善された水平移動処理
+     */
+    handleHorizontalMovement(input, deltaTime) {
+        const targetSpeed = GAME_CONFIG.PLAYER_SPEED;
+        const acceleration = PHYSICS.ACCELERATION * (deltaTime / (1000 / GAME_CONFIG.FPS) || 1);
+        const deceleration = PHYSICS.DECELERATION * (deltaTime / (1000 / GAME_CONFIG.FPS) || 1);
+        
+        // 左右の入力に応じて目標速度を設定
+        let targetVelocityX = 0;
+        
+        if (input.left) {
+            targetVelocityX = -targetSpeed;
+            this.facingRight = false;
+        } else if (input.right) {
+            targetVelocityX = targetSpeed;
+            this.facingRight = true;
+        }
+        
+        // 現在の速度を目標速度に向けて徐々に調整
+        if (targetVelocityX !== 0) {
+            // 入力がある場合：目標速度に向けて加速
+            if (this.velocity.x < targetVelocityX) {
+                this.velocity.x += acceleration;
+                if (this.velocity.x > targetVelocityX) {
+                    this.velocity.x = targetVelocityX;
+                }
+            } else if (this.velocity.x > targetVelocityX) {
+                this.velocity.x -= acceleration;
+                if (this.velocity.x < targetVelocityX) {
+                    this.velocity.x = targetVelocityX;
+                }
+            }
+        } else {
+            // 入力がない場合：徐々に減速
+            if (this.velocity.x > 0) {
+                this.velocity.x -= deceleration;
+                if (this.velocity.x < 0) this.velocity.x = 0;
+            } else if (this.velocity.x < 0) {
+                this.velocity.x += deceleration;
+                if (this.velocity.x > 0) this.velocity.x = 0;
+            }
+        }
+        
+        // 最大速度を制限（より厳密に）
+        this.velocity.x = Utils.clamp(this.velocity.x, -PHYSICS.MAX_SPEED, PHYSICS.MAX_SPEED);
+        
+        // 入力がない時のみ摩擦/空気抵抗を適用（暴走防止）
+        if (targetVelocityX === 0) {
+            if (this.isOnGround) {
+                this.velocity.x *= PHYSICS.FRICTION;
+            } else {
+                this.velocity.x *= PHYSICS.AIR_RESISTANCE;
+            }
+        }
+        
+        // 極小速度の場合は0にする
+        if (Math.abs(this.velocity.x) < 0.05) {
+            this.velocity.x = 0;
+        }
+    }
+
+    /**
+     * 改善されたジャンプ処理
+     */
+    handleJump(input) {
+        // ジャンプ開始
+        if (input.jump && this.isOnGround && !this.jumpPressed) {
+            // パワーアップ状態に応じてジャンプ力を調整
+            let jumpForce = PHYSICS.JUMP_FORCE;
+            if (this.powerUps.jumpBoost) {
+                jumpForce *= 1.5; // ジャンプ力1.5倍
+            }
+            
+            this.velocity.y = jumpForce;
+            this.isOnGround = false;
+            this.jumpPressed = true;
+            
+            // ジャンプエフェクト（パワーアップ状態に応じて色を変更）
+            const effectColor = this.powerUps.jumpBoost ? '#00FF00' : '#FFD700';
+            this.particleSystem.createParticle(
+                this.x + this.width / 2, 
+                this.y + this.height, 
+                effectColor
+            );
+        }
+        
+        // ジャンプボタンを離した時の処理
+        if (!input.jump) {
+            this.jumpPressed = false;
+            
+            // 短押しジャンプ（ボタンを早く離すと低いジャンプ）
+            if (this.velocity.y < 0) {
+                this.velocity.y *= 0.6;
+            }
+        }
+    }
+
+    /**
+     * パワーアップ状態の更新
+     */
+    updatePowerUps(deltaTime) {
+        // ジャンプ力向上の更新
+        if (this.powerUps.jumpBoost) {
+            this.powerUps.jumpBoostTime -= deltaTime;
+            if (this.powerUps.jumpBoostTime <= 0) {
+                this.powerUps.jumpBoost = false;
+                this.powerUps.jumpBoostTime = 0;
+            }
+        }
+
+        // 無敵状態の更新
+        if (this.powerUps.invincible) {
+            this.powerUps.invincibleTime -= deltaTime;
+            if (this.powerUps.invincibleTime <= 0) {
+                this.powerUps.invincible = false;
+                this.powerUps.invincibleTime = 0;
+            }
+        }
+    }
+
+    update(deltaTime, platforms, enemies, coins, powerUps, inputManager) {
+        // アニメーション更新
+        this.animation.update(deltaTime);
+
+        // 入力処理（エラーハンドリング付き）
+        let input = { left: false, right: false, jump: false };
+        try {
+            if (inputManager && typeof inputManager.getMovementInput === 'function') {
+                input = inputManager.getMovementInput();
+            } else {
+                console.warn('InputManager not properly initialized');
+            }
+        } catch (error) {
+            console.error('Error getting movement input:', error);
+        }
+        
+        // 改善された水平移動システム
+        this.handleHorizontalMovement(input, deltaTime);
+
+        // 改善されたジャンプシステム
+        this.handleJump(input);
+
+        // 重力適用
+        this.velocity.y += PHYSICS.GRAVITY;
+        this.velocity.y = Utils.clamp(this.velocity.y, -20, PHYSICS.MAX_FALL_SPEED);
+
+        // 位置更新
+        this.x += this.velocity.x;
+        this.y += this.velocity.y;
+
+        // プラットフォームコリジョン（境界チェックより先に実行）
+        this.checkPlatformCollisions(platforms);
+
+        // 境界チェック（最後に実行）
+        this.checkBounds();
+
+        // 敵とのコリジョン
+        this.checkEnemyCollisions(enemies);
+
+        // コイン収集
+        this.collectCoins(coins);
+
+        // パワーアップ収集
+        this.collectPowerUps(powerUps);
+
+        // 無敵時間更新
+        if (this.invulnerable) {
+            this.invulnerableTime -= deltaTime;
+            if (this.invulnerableTime <= 0) {
+                this.invulnerable = false;
+            }
+        }
+
+        // パワーアップ時間更新
+        this.updatePowerUps(deltaTime);
+
+        // パーティクル更新
+        this.particleSystem.update(deltaTime);
+    }
+
+    checkBounds() {
+        // 左右の境界（より自然な処理）
+        if (this.x < 0) {
+            this.x = 0;
+            // 壁に当たった時の自然な停止
+            if (this.velocity.x < 0) {
+                this.velocity.x = 0;
+            }
+        } else if (this.x + this.width > GAME_CONFIG.CANVAS_WIDTH) {
+            this.x = GAME_CONFIG.CANVAS_WIDTH - this.width;
+            // 壁に当たった時の自然な停止
+            if (this.velocity.x > 0) {
+                this.velocity.x = 0;
+            }
+        }
+
+        // 下の境界（落下判定）- より厳密に
+        if (this.y > GAME_CONFIG.CANVAS_HEIGHT + 50) {
+            this.takeDamage();
+        }
+    }
+
+    checkPlatformCollisions(platforms) {
+        this.isOnGround = false;
+        
+        if (!platforms || !Array.isArray(platforms)) return;
+        
+        platforms.forEach(platform => {
+            if (!platform) return;
+            
+            const collision = CollisionDetector.checkPlatformCollision(this, platform);
+            
+            if (collision.isOnGround) {
+                this.isOnGround = true;
+                // より正確な位置修正
+                this.y = Math.min(this.y, collision.collision.y);
+                this.velocity.y = 0;
+            }
+        });
+    }
+
+    checkEnemyCollisions(enemies) {
+        // 無敵状態のチェック（通常の無敵時間とパワーアップ無敵状態の両方をチェック）
+        if (this.invulnerable || this.powerUps.invincible) return;
+
+        // 配列の存在チェック
+        if (!enemies || !Array.isArray(enemies)) return;
+
+        enemies.forEach(enemy => {
+            if (enemy && !enemy.isDead && CollisionDetector.checkEnemyCollision(this, enemy)) {
+                // プレイヤーが敵の上にいる場合（敵を倒す）
+                if (this.velocity.y > 0 && this.y < enemy.y) {
+                    this.defeatEnemy(enemy);
+                } else {
+                    // プレイヤーがダメージを受ける
+                    this.takeDamage();
+                }
+            }
+        });
+    }
+
+    collectCoins(coins) {
+        if (!coins || !Array.isArray(coins)) return;
+        
+        for (let i = coins.length - 1; i >= 0; i--) {
+            const coin = coins[i];
+            if (coin && !coin.collected && CollisionDetector.checkCoinCollision(this, coin)) {
+                this.score += 10;
+                coin.collected = true; // 収集済みフラグを設定
+                coins.splice(i, 1);
+                
+                // コイン収集エフェクト
+                this.createCoinCollectionEffect();
+            }
+        }
+    }
+
+    /**
+     * パワーアップ収集
+     */
+    collectPowerUps(powerUps) {
+        if (!powerUps || !Array.isArray(powerUps)) {
+            return;
+        }
+        
+        for (let i = powerUps.length - 1; i >= 0; i--) {
+            const powerUp = powerUps[i];
+            
+            // パワーアップアイテムの存在チェック
+            if (!powerUp || typeof powerUp !== 'object') {
+                continue;
+            }
+            
+            if (CollisionDetector.checkPowerUpCollision(this, powerUp)) {
+                try {
+                    // パワーアップの種類を保存（削除前に取得）
+                    const powerUpType = powerUp.type || 'unknown';
+                    
+                    this.applyPowerUp(powerUp);
+                    powerUps.splice(i, 1);
+                    
+                    // パワーアップ収集エフェクト
+                    this.createPowerUpCollectionEffect(powerUpType);
+                } catch (error) {
+                    console.error('Error collecting power-up:', error);
+                }
+            }
+        }
+    }
+
+    /**
+     * パワーアップ効果の適用
+     */
+    applyPowerUp(powerUp) {
+        if (!powerUp || !powerUp.type) {
+            console.warn('Invalid power-up object:', powerUp);
+            return;
+        }
+        
+        try {
+            if (powerUp.type === 'jump') {
+                this.powerUps.jumpBoost = true;
+                this.powerUps.jumpBoostTime = 10000; // 10秒間
+            } else if (powerUp.type === 'invincible') {
+                this.powerUps.invincible = true;
+                this.powerUps.invincibleTime = 8000; // 8秒間
+            } else {
+                console.warn('Unknown power-up type:', powerUp.type);
+            }
+        } catch (error) {
+            console.error('Error applying power-up:', error);
+        }
+    }
+
+    /**
+     * コイン収集エフェクト
+     */
+    createCoinCollectionEffect() {
+        for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            const velocity = new Vector2(
+                Math.cos(angle) * 3,
+                Math.sin(angle) * 3
+            );
+            this.particleSystem.createParticle(
+                this.x + this.width / 2,
+                this.y + this.height / 2,
+                '#FFD700',
+                velocity
+            );
+        }
+    }
+
+    /**
+     * パワーアップ収集エフェクト
+     */
+    createPowerUpCollectionEffect(type) {
+        try {
+            const color = type === 'jump' ? '#00FF00' : '#FFD700';
+            const particleCount = type === 'jump' ? 12 : 15;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const angle = (i / particleCount) * Math.PI * 2;
+                const velocity = new Vector2(
+                    Math.cos(angle) * 4,
+                    Math.sin(angle) * 4
+                );
+                this.particleSystem.createParticle(
+                    this.x + this.width / 2,
+                    this.y + this.height / 2,
+                    color,
+                    velocity
+                );
+            }
+        } catch (error) {
+            console.error('Error creating power-up collection effect:', error);
+        }
+    }
+
+    takeDamage() {
+        // 無敵状態のチェック（通常の無敵時間とパワーアップ無敵状態の両方をチェック）
+        if (this.invulnerable || this.powerUps.invincible) return;
+        
+        this.lives--;
+        this.invulnerable = true;
+        this.invulnerableTime = 2000; // 2秒間無敵
+        
+        // プレイヤーを初期位置にリセット（ライフが残っている場合）
+        if (this.lives > 0) {
+            this.x = 100;
+            this.y = 500;
+            this.velocity = new Vector2(0, 0);
+            this.isOnGround = false;
+        }
+        
+        // ダメージエフェクト
+        for (let i = 0; i < 10; i++) {
+            this.particleSystem.createParticle(
+                this.x + this.width / 2, 
+                this.y + this.height / 2, 
+                '#FF4444'
+            );
+        }
+    }
+
+    defeatEnemy(enemy) {
+        this.velocity.y = PHYSICS.JUMP_FORCE * 0.7; // 小さなジャンプ
+        this.score += 20;
+        
+        // 敵撃破エフェクト
+        this.createEnemyDefeatEffect(enemy);
+        // 敵を撃破状態にする
+        if (enemy) {
+            enemy.isDead = true;
+        }
+    }
+
+    /**
+     * 敵撃破エフェクト
+     */
+    createEnemyDefeatEffect(enemy) {
+        // 爆発エフェクト
+        for (let i = 0; i < 20; i++) {
+            const angle = (i / 20) * Math.PI * 2;
+            const velocity = new Vector2(
+                Math.cos(angle) * (Math.random() * 3 + 2),
+                Math.sin(angle) * (Math.random() * 3 + 2)
+            );
+            this.particleSystem.createParticle(
+                enemy.x + enemy.width / 2,
+                enemy.y + enemy.height / 2,
+                '#FF6B6B',
+                velocity
+            );
+        }
+        
+        // スコアエフェクト
+        for (let i = 0; i < 5; i++) {
+            this.particleSystem.createParticle(
+                enemy.x + enemy.width / 2,
+                enemy.y + enemy.height / 2 - 20,
+                '#FFD700',
+                new Vector2((Math.random() - 0.5) * 4, -2)
+            );
+        }
+    }
+
+    render(ctx) {
+        ctx.save();
+        
+        // 無敵時間中の点滅効果
+        if ((this.invulnerable && Math.floor(this.invulnerableTime / 100) % 2 === 0) ||
+            (this.powerUps.invincible && Math.floor(this.powerUps.invincibleTime / 100) % 2 === 0)) {
+            ctx.globalAlpha = 0.5;
+        }
+
+        // プレイヤーの描画
+        const frame = this.animation.getCurrentFrame();
+        let playerColor = frame.color;
+        
+        // パワーアップ状態に応じて色を変更
+        if (this.powerUps.jumpBoost) {
+            playerColor = '#00FF00'; // 緑色（ジャンプ力向上）
+        } else if (this.powerUps.invincible) {
+            playerColor = '#FFD700'; // 金色（無敵状態）
+        }
+        
+        ctx.fillStyle = playerColor;
+        
+        // 向きに応じて反転（プレイヤー中心を基準に反転）
+        if (!this.facingRight) {
+            const centerX = this.x + this.width / 2;
+            ctx.translate(centerX, 0);
+            ctx.scale(-1, 1);
+            ctx.translate(-centerX, 0);
+        }
+        
+        ctx.fillRect(this.x, this.y + frame.offset, this.width, this.height);
+        
+        // 目を描画
+        ctx.fillStyle = '#000';
+        const eyeSize = 4;
+        const eyeY = this.y + 8 + frame.offset;
+        
+        if (this.facingRight) {
+            ctx.fillRect(this.x + 8, eyeY, eyeSize, eyeSize);
+            ctx.fillRect(this.x + 20, eyeY, eyeSize, eyeSize);
+        } else {
+            ctx.fillRect(this.x + 8, eyeY, eyeSize, eyeSize);
+            ctx.fillRect(this.x + 20, eyeY, eyeSize, eyeSize);
+        }
+        
+        ctx.restore();
+        
+        // パーティクル描画
+        this.particleSystem.render(ctx);
+    }
+
+    reset(x, y) {
+        this.x = x || 100;
+        this.y = y || 500;
+        this.velocity = new Vector2(0, 0);
+        this.isOnGround = false;
+        this.facingRight = true;
+        this.lives = 3;
+        this.score = 0;
+        this.invulnerable = false;
+        this.invulnerableTime = 0;
+        this.jumpPressed = false;
+        
+        // パワーアップ状態をリセット
+        this.powerUps = {
+            jumpBoost: false,
+            jumpBoostTime: 0,
+            invincible: false,
+            invincibleTime: 0
+        };
+        
+        if (this.animation && typeof this.animation.reset === 'function') {
+            this.animation.reset();
+        }
+        
+        if (this.particleSystem) {
+            this.particleSystem.particles = [];
+        }
+    }
+}
+
+/**
+ * 敵クラス
+ */
+class Enemy {
+    constructor(x, y, type = 'basic') {
+        this.x = x;
+        this.y = y;
+        this.width = 24;
+        this.height = 24;
+        this.velocity = new Vector2(-GAME_CONFIG.ENEMY_SPEED, 0);
+        this.type = type;
+        this.direction = -1; // -1: 左, 1: 右
+        this.patrolDistance = 100;
+        this.startX = x;
+        this.animation = this.createAnimation();
+        this.isDead = false;
+    }
+
+    createAnimation() {
+        const frames = [
+            { color: '#FF4444', offset: 0 },
+            { color: '#FF6666', offset: 0 },
+            { color: '#FF4444', offset: 0 },
+            { color: '#CC3333', offset: 0 }
+        ];
+        return new Animation(frames, 200);
+    }
+
+    update(deltaTime, platforms) {
+        if (this.isDead) return;
+
+        this.animation.update(deltaTime);
+
+        // パトロール移動
+        this.x += this.velocity.x * this.direction;
+
+        // パトロール範囲チェック
+        if (this.x <= this.startX - this.patrolDistance || 
+            this.x >= this.startX + this.patrolDistance) {
+            this.direction *= -1;
+        }
+
+        // 重力適用
+        this.velocity.y += PHYSICS.GRAVITY;
+        this.velocity.y = Utils.clamp(this.velocity.y, -10, PHYSICS.MAX_FALL_SPEED);
+
+        this.y += this.velocity.y;
+
+        // プラットフォームコリジョン
+        this.checkPlatformCollisions(platforms);
+
+        // 境界チェック
+        this.checkBounds();
+    }
+
+    checkPlatformCollisions(platforms) {
+        if (!platforms || !Array.isArray(platforms)) return;
+        
+        platforms.forEach(platform => {
+            if (!platform) return;
+            
+            const collision = CollisionDetector.checkPlatformCollision(this, platform);
+            
+            if (collision.isOnGround) {
+                this.y = collision.collision.y;
+                this.velocity.y = 0;
+            }
+        });
+    }
+
+    checkBounds() {
+        // 左右の境界
+        if (this.x < 0) {
+            this.x = 0;
+            this.direction = 1;
+        } else if (this.x + this.width > GAME_CONFIG.CANVAS_WIDTH) {
+            this.x = GAME_CONFIG.CANVAS_WIDTH - this.width;
+            this.direction = -1;
+        }
+
+        // 下の境界（落下判定）
+        if (this.y > GAME_CONFIG.CANVAS_HEIGHT) {
+            this.isDead = true;
+        }
+    }
+
+    render(ctx) {
+        if (this.isDead) return;
+
+        const frame = this.animation.getCurrentFrame();
+        ctx.fillStyle = frame.color;
+        ctx.fillRect(this.x, this.y + frame.offset, this.width, this.height);
+
+        // 目を描画
+        ctx.fillStyle = '#000';
+        const eyeSize = 3;
+        const eyeY = this.y + 6 + frame.offset;
+        ctx.fillRect(this.x + 6, eyeY, eyeSize, eyeSize);
+        ctx.fillRect(this.x + 15, eyeY, eyeSize, eyeSize);
+    }
+}
+
+/**
+ * コインクラス
+ */
+class Coin {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 16;
+        this.height = 16;
+        this.animation = this.createAnimation();
+        this.collected = false;
+    }
+
+    createAnimation() {
+        const frames = [
+            { scale: 1.0, rotation: 0 },
+            { scale: 1.1, rotation: 45 },
+            { scale: 1.0, rotation: 90 },
+            { scale: 1.1, rotation: 135 },
+            { scale: 1.0, rotation: 180 },
+            { scale: 1.1, rotation: 225 },
+            { scale: 1.0, rotation: 270 },
+            { scale: 1.1, rotation: 315 }
+        ];
+        return new Animation(frames, 100);
+    }
+
+    update(deltaTime) {
+        if (this.collected) return;
+        this.animation.update(deltaTime);
+    }
+
+    render(ctx) {
+        if (this.collected) return;
+
+        const frame = this.animation.getCurrentFrame();
+        
+        ctx.save();
+        ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+        ctx.rotate(Utils.toRadians(frame.rotation));
+        ctx.scale(frame.scale, frame.scale);
+        
+        // コインの描画
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // コインの内側
+        ctx.fillStyle = '#FFA500';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.width / 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // コインの中心
+        ctx.fillStyle = '#FF8C00';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.width / 6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
+    }
+}
+
+/**
+ * プラットフォームクラス
+ */
+class Platform {
+    constructor(x, y, width, height, type = 'normal') {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.type = type; // 'normal', 'moving', 'breakable'
+        this.originalX = x;
+        this.originalY = y;
+        // デフォルトで移動距離と速度を設定（moving の場合に利用）
+        this.moveDistance = 50;
+        this.moveSpeed = 0.001; // sin に掛ける時間係数として使用
+        this.health = type === 'breakable' ? 3 : Infinity;
+    }
+
+    update(deltaTime) {
+        if (this.type === 'moving') {
+            // 移動プラットフォーム
+            this.x = this.originalX + Math.sin(Date.now() * this.moveSpeed) * this.moveDistance;
+        }
+    }
+
+    render(ctx) {
+        let color;
+        switch (this.type) {
+            case 'normal':
+                color = '#8B4513';
+                break;
+            case 'moving':
+                color = '#A0522D';
+                break;
+            case 'breakable':
+                color = this.health > 1 ? '#CD853F' : '#8B4513';
+                break;
+            default:
+                color = '#8B4513';
+        }
+
+        ctx.fillStyle = color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+
+        // プラットフォームの装飾
+        ctx.fillStyle = '#654321';
+        ctx.fillRect(this.x, this.y, this.width, 4);
+        ctx.fillRect(this.x, this.y + this.height - 4, this.width, 4);
+    }
+
+    takeDamage() {
+        if (this.type === 'breakable') {
+            this.health--;
+            return this.health <= 0;
+        }
+        return false;
+    }
+}
+
+/**
+ * パワーアップアイテムクラス
+ */
+class PowerUp {
+    constructor(x, y, type = 'jump') {
+        this.x = x;
+        this.y = y;
+        this.width = 20;
+        this.height = 20;
+        this.type = type; // 'jump', 'invincible'
+        this.collected = false;
+        this.animation = this.createAnimation();
+        this.floatOffset = 0;
+        this.floatSpeed = 0.05;
+    }
+
+    createAnimation() {
+        const frames = [
+            { scale: 1.0, alpha: 1.0 },
+            { scale: 1.1, alpha: 0.8 },
+            { scale: 1.0, alpha: 1.0 },
+            { scale: 1.1, alpha: 0.8 }
+        ];
+        return new Animation(frames, 200);
+    }
+
+    update(deltaTime) {
+        if (this.collected) return;
+        
+        this.animation.update(deltaTime);
+        
+        // 浮遊アニメーション
+        this.floatOffset += this.floatSpeed;
+    }
+
+    render(ctx) {
+        if (this.collected) return;
+
+        const frame = this.animation.getCurrentFrame();
+        const floatY = this.y + Math.sin(this.floatOffset) * 3;
+        
+        ctx.save();
+        ctx.globalAlpha = frame.alpha;
+        ctx.translate(this.x + this.width / 2, floatY + this.height / 2);
+        ctx.scale(frame.scale, frame.scale);
+        
+        // パワーアップの種類に応じた描画
+        if (this.type === 'jump') {
+            // ジャンプ力向上（緑色の星）
+            ctx.fillStyle = '#00FF00';
+            this.drawStar(ctx, 0, 0, 5, 10, 5);
+        } else if (this.type === 'invincible') {
+            // 無敵状態（金色の盾）
+            ctx.fillStyle = '#FFD700';
+            this.drawShield(ctx, 0, 0, 10);
+        }
+        
+        ctx.restore();
+    }
+
+    drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+        let rot = Math.PI / 2 * 3;
+        let x = cx;
+        let y = cy;
+        const step = Math.PI / spikes;
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - outerRadius);
+        
+        for (let i = 0; i < spikes; i++) {
+            x = cx + Math.cos(rot) * outerRadius;
+            y = cy + Math.sin(rot) * outerRadius;
+            ctx.lineTo(x, y);
+            rot += step;
+
+            x = cx + Math.cos(rot) * innerRadius;
+            y = cy + Math.sin(rot) * innerRadius;
+            ctx.lineTo(x, y);
+            rot += step;
+        }
+        
+        ctx.lineTo(cx, cy - outerRadius);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    drawShield(ctx, cx, cy, radius) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - radius);
+        ctx.lineTo(cx + radius * 0.8, cy - radius * 0.3);
+        ctx.lineTo(cx + radius * 0.6, cy + radius * 0.5);
+        ctx.lineTo(cx, cy + radius);
+        ctx.lineTo(cx - radius * 0.6, cy + radius * 0.5);
+        ctx.lineTo(cx - radius * 0.8, cy - radius * 0.3);
+        ctx.closePath();
+        ctx.fill();
+    }
+}
+
+/**
+ * 背景クラス
+ */
+class Background {
+    constructor() {
+        this.clouds = this.generateClouds();
+        this.parallaxOffset = 0;
+    }
+
+    generateClouds() {
+        const clouds = [];
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: Utils.randomInt(0, GAME_CONFIG.CANVAS_WIDTH),
+                y: Utils.randomInt(50, 200),
+                width: Utils.randomInt(60, 120),
+                height: Utils.randomInt(30, 60),
+                speed: Utils.randomFloat(0.2, 0.5)
+            });
+        }
+        return clouds;
+    }
+
+    update(deltaTime, playerVelocityX) {
+        // パララックス効果
+        this.parallaxOffset += playerVelocityX * 0.1;
+        
+        // 雲の移動
+        this.clouds.forEach(cloud => {
+            cloud.x -= cloud.speed;
+            if (cloud.x + cloud.width < 0) {
+                cloud.x = GAME_CONFIG.CANVAS_WIDTH;
+                cloud.y = Utils.randomInt(50, 200);
+            }
+        });
+    }
+
+    render(ctx) {
+        // 空のグラデーション
+        const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
+        gradient.addColorStop(0, '#87CEEB');
+        gradient.addColorStop(1, '#98FB98');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
+
+        // 雲の描画
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        this.clouds.forEach(cloud => {
+            ctx.beginPath();
+            ctx.arc(cloud.x, cloud.y, cloud.width / 3, 0, Math.PI * 2);
+            ctx.arc(cloud.x + cloud.width / 3, cloud.y, cloud.height / 2, 0, Math.PI * 2);
+            ctx.arc(cloud.x + cloud.width * 2 / 3, cloud.y, cloud.width / 3, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+}
