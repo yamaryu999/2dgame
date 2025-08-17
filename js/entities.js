@@ -135,9 +135,9 @@ class Player {
         if (!input.jump) {
             this.jumpPressed = false;
             
-            // 短押しジャンプ（ボタンを早く離すと低いジャンプ）
+            // 短押しジャンプ（ボタンを早く離すと低いジャンプ）- より緩やかに調整
             if (this.velocity.y < 0) {
-                this.velocity.y *= 0.6;
+                this.velocity.y *= 0.7;
             }
         }
     }

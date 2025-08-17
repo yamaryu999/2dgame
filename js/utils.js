@@ -5,13 +5,13 @@
 
 // 物理定数
 const PHYSICS = {
-    GRAVITY: 0.6,          // 重力を軽減
+    GRAVITY: 0.5,          // 重力をさらに軽減
     FRICTION: 0.8,         // 摩擦を調整
     AIR_RESISTANCE: 0.98,  // 空中抵抗を緩和
     ACCELERATION: 0.4,     // 加速度を小さく（より滑らかに）
     DECELERATION: 0.6,     // 減速度を調整
-    JUMP_FORCE: -12,       // ジャンプ力を調整
-    MAX_FALL_SPEED: 10,    // 最大落下速度を調整
+    JUMP_FORCE: -15,       // ジャンプ力を大幅に向上
+    MAX_FALL_SPEED: 12,    // 最大落下速度を調整
     MAX_SPEED: 4           // 最大速度を下げて制御しやすく
 };
 
