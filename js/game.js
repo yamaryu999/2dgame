@@ -43,6 +43,14 @@ class Game {
             duration: 2000,
             particles: []
         };
+
+        // ステージ環境（風・重力・摩擦・テーマ）
+        this.environment = {
+            windX: 0,           // +右/−左（60FPS基準のフレーム当たり加算）
+            gravityScale: 1.0,  // 重力倍率
+            frictionScale: 1.0, // 地面摩擦倍率
+            theme: 'day'        // 背景テーマ
+        };
         
         // UI要素
         this.scoreElement = null;
@@ -171,6 +179,8 @@ class Game {
         this.enemies = [];
         this.coins = [];
         this.powerUps = [];
+        // 環境デフォルト
+        this.setEnvironment({ windX: 0, gravityScale: 1.0, frictionScale: 1.0, theme: 'day' });
         
         // ステージ1
         if (this.currentStage === 1) {
@@ -197,9 +207,21 @@ class Game {
     }
 
     /**
+     * ステージ環境を設定
+     */
+    setEnvironment({ windX, gravityScale, frictionScale, theme }) {
+        if (typeof windX === 'number') this.environment.windX = windX;
+        if (typeof gravityScale === 'number') this.environment.gravityScale = gravityScale;
+        if (typeof frictionScale === 'number') this.environment.frictionScale = frictionScale;
+        if (typeof theme === 'string') this.environment.theme = theme;
+    }
+
+    /**
      * ステージ1の生成
      */
     generateStage1() {
+        // 穏やかな昼（標準）
+        this.setEnvironment({ windX: 0, gravityScale: 1.0, frictionScale: 1.0, theme: 'day' });
         // 地面
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, GAME_CONFIG.CANVAS_WIDTH, 20));
             
@@ -234,15 +256,17 @@ class Game {
      */
     generateStage2() {
         const stageWidth = 1600; // ステージ2はより広い
+        // 風が強い草原：右向きの風、通常重力
+        this.setEnvironment({ windX: 0.05, gravityScale: 1.0, frictionScale: 1.0, theme: 'breeze' });
         
         // 地面
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
         
         // より高いプラットフォーム
         this.platforms.push(new Platform(300, 400, 120, 20));
-        this.platforms.push(new Platform(600, 300, 120, 20));
+        this.platforms.push(new Platform(600, 300, 120, 20, 'bounce'));
         this.platforms.push(new Platform(900, 200, 120, 20));
-        this.platforms.push(new Platform(1200, 350, 120, 20));
+        this.platforms.push(new Platform(1200, 350, 120, 20, 'bounce'));
         this.platforms.push(new Platform(1400, 250, 120, 20));
         
         // 移動プラットフォーム
@@ -271,17 +295,19 @@ class Game {
      */
     generateStage3() {
         const stageWidth = 2000;
+        // 氷雪の谷：滑りやすい、やや重い重力
+        this.setEnvironment({ windX: 0, gravityScale: 1.1, frictionScale: 0.8, theme: 'snow' });
         
         // 地面
-        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20, 'ice'));
         
         // 複雑な配置
-        this.platforms.push(new Platform(200, 450, 100, 20));
-        this.platforms.push(new Platform(400, 350, 100, 20));
+        this.platforms.push(new Platform(200, 450, 100, 20, 'ice'));
+        this.platforms.push(new Platform(400, 350, 100, 20, 'ice'));
         this.platforms.push(new Platform(600, 250, 100, 20));
-        this.platforms.push(new Platform(800, 150, 100, 20));
+        this.platforms.push(new Platform(800, 150, 100, 20, 'ice'));
         this.platforms.push(new Platform(1000, 300, 100, 20));
-        this.platforms.push(new Platform(1200, 200, 100, 20));
+        this.platforms.push(new Platform(1200, 200, 100, 20, 'ice'));
         this.platforms.push(new Platform(1400, 400, 100, 20));
         this.platforms.push(new Platform(1600, 250, 100, 20));
         this.platforms.push(new Platform(1800, 350, 100, 20));
@@ -319,16 +345,18 @@ class Game {
      */
     generateStage4() {
         const stageWidth = 2400;
+        // 沼地：高摩擦、通常〜重めの重力
+        this.setEnvironment({ windX: -0.02, gravityScale: 1.05, frictionScale: 1.4, theme: 'swamp' });
         
         // 地面
-        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20, 'mud'));
         
         // より困難な配置
-        this.platforms.push(new Platform(150, 450, 80, 20));
+        this.platforms.push(new Platform(150, 450, 80, 20, 'mud'));
         this.platforms.push(new Platform(350, 350, 80, 20));
-        this.platforms.push(new Platform(550, 250, 80, 20));
+        this.platforms.push(new Platform(550, 250, 80, 20, 'mud'));
         this.platforms.push(new Platform(750, 150, 80, 20));
-        this.platforms.push(new Platform(950, 300, 80, 20));
+        this.platforms.push(new Platform(950, 300, 80, 20, 'mud'));
         this.platforms.push(new Platform(1150, 200, 80, 20));
         this.platforms.push(new Platform(1350, 400, 80, 20));
         this.platforms.push(new Platform(1550, 250, 80, 20));
@@ -374,16 +402,18 @@ class Game {
      */
     generateStage5() {
         const stageWidth = 2800;
+        // 火山：低重力、危険なトゲ、バウンド床
+        this.setEnvironment({ windX: 0, gravityScale: 0.9, frictionScale: 1.0, theme: 'volcano' });
         
         // 地面
-        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20, 'spike'));
         
         // 最終ステージの困難な配置
-        this.platforms.push(new Platform(100, 450, 60, 20));
+        this.platforms.push(new Platform(100, 450, 60, 20, 'bounce'));
         this.platforms.push(new Platform(300, 350, 60, 20));
-        this.platforms.push(new Platform(500, 250, 60, 20));
+        this.platforms.push(new Platform(500, 250, 60, 20, 'spike'));
         this.platforms.push(new Platform(700, 150, 60, 20));
-        this.platforms.push(new Platform(900, 300, 60, 20));
+        this.platforms.push(new Platform(900, 300, 60, 20, 'bounce'));
         this.platforms.push(new Platform(1100, 200, 60, 20));
         this.platforms.push(new Platform(1300, 400, 60, 20));
         this.platforms.push(new Platform(1500, 250, 60, 20));
@@ -438,6 +468,8 @@ class Game {
      */
     generateStage6() {
         const stageWidth = 3200;
+        // 強風：右へ強い風
+        this.setEnvironment({ windX: 0.08, gravityScale: 1.0, frictionScale: 1.0, theme: 'breeze' });
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
         for (let x = 200; x <= 3000; x += 200) {
             this.platforms.push(new Platform(x, 400 - (x % 400) / 5, 100, 20));
@@ -457,12 +489,14 @@ class Game {
      */
     generateStage7() {
         const stageWidth = 3600;
+        // トランポリンゾーン：バウンド多め
+        this.setEnvironment({ windX: 0, gravityScale: 1.0, frictionScale: 1.0, theme: 'day' });
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
         const heights = [450, 350, 250, 350, 200, 300, 250];
         for (let i = 0; i < 14; i++) {
             const x = 200 + i * 240;
             const h = heights[i % heights.length];
-            this.platforms.push(new Platform(x, h, 120, 20));
+            this.platforms.push(new Platform(x, h, 120, 20, i % 3 === 0 ? 'bounce' : 'normal'));
         }
         this.platforms.push(new Platform(900, 200, 80, 20, 'moving'));
         this.platforms.push(new Platform(2100, 150, 80, 20, 'moving'));
@@ -478,11 +512,13 @@ class Game {
      */
     generateStage8() {
         const stageWidth = 4000;
+        // 夜の都市：やや低重力、風なし
+        this.setEnvironment({ windX: 0, gravityScale: 0.95, frictionScale: 1.0, theme: 'night' });
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
         for (let i = 0; i < 10; i++) {
             const x = 300 + i * 350;
-            this.platforms.push(new Platform(x, 420 - (i % 2) * 180, 100, 20));
-            this.platforms.push(new Platform(x + 150, 260 + (i % 2) * 120, 100, 20));
+            this.platforms.push(new Platform(x, 420 - (i % 2) * 180, 100, 20, i % 2 === 0 ? 'spike' : 'normal'));
+            this.platforms.push(new Platform(x + 150, 260 + (i % 2) * 120, 100, 20, i % 3 === 0 ? 'bounce' : 'normal'));
         }
         for (let i = 0; i < 5; i++) this.platforms.push(new Platform(700 + i * 600, 200, 80, 20, 'moving'));
         for (let i = 0; i < 8; i++) this.enemies.push(new Enemy(500 + i * 400, 300));
@@ -495,12 +531,14 @@ class Game {
      */
     generateStage9() {
         const stageWidth = 4400;
+        // 極寒：強い氷床、重力やや重い
+        this.setEnvironment({ windX: -0.03, gravityScale: 1.1, frictionScale: 0.7, theme: 'snow' });
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
         for (let i = 0; i < 16; i++) {
             const x = 200 + i * 260;
             const w = 80 + (i % 3) * 40;
             const y = 420 - ((i * 70) % 300);
-            this.platforms.push(new Platform(x, y, w, 20));
+            this.platforms.push(new Platform(x, y, w, 20, i % 2 === 0 ? 'ice' : 'normal'));
         }
         this.platforms.push(new Platform(1200, 180, 70, 20, 'moving'));
         this.platforms.push(new Platform(2600, 160, 70, 20, 'moving'));
@@ -514,12 +552,15 @@ class Game {
      */
     generateStage10() {
         const stageWidth = 4800;
+        // 最終：混在、低重力
+        this.setEnvironment({ windX: 0.02, gravityScale: 0.9, frictionScale: 1.0, theme: 'dusk' });
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
         // ジグザグの小さな足場
         for (let i = 0; i < 18; i++) {
             const x = 200 + i * 250;
             const y = 450 - (i % 2) * 220;
-            this.platforms.push(new Platform(x, y, 70, 18));
+            const t = i % 5 === 0 ? 'spike' : i % 3 === 0 ? 'bounce' : 'normal';
+            this.platforms.push(new Platform(x, y, 70, 18, t));
         }
         // 多数の移動足場
         for (let i = 0; i < 8; i++) this.platforms.push(new Platform(600 + i * 500, 220 + (i % 3) * 60, 70, 18, 'moving'));

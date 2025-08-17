@@ -39,6 +39,9 @@ class Player {
             duration: 2000,
             wave: 0
         };
+
+        // 接地面の摩擦係数スケール（床タイプで更新）
+        this.surfaceFrictionScale = 1.0;
     }
 
     createAnimation() {
@@ -57,8 +60,9 @@ class Player {
      */
     handleHorizontalMovement(input, deltaTime) {
         const targetSpeed = GAME_CONFIG.PLAYER_SPEED;
-        const acceleration = PHYSICS.ACCELERATION * (deltaTime / (1000 / GAME_CONFIG.FPS) || 1);
-        const deceleration = PHYSICS.DECELERATION * (deltaTime / (1000 / GAME_CONFIG.FPS) || 1);
+        const dtScale = (deltaTime / (1000 / GAME_CONFIG.FPS) || 1);
+        const acceleration = PHYSICS.ACCELERATION * dtScale;
+        const deceleration = PHYSICS.DECELERATION * dtScale;
         
         // 左右の入力に応じて目標速度を設定
         let targetVelocityX = 0;
@@ -101,10 +105,16 @@ class Player {
         
         // 入力がない時のみ摩擦/空気抵抗を適用（暴走防止）
         if (targetVelocityX === 0) {
-        if (this.isOnGround) {
-            this.velocity.x *= PHYSICS.FRICTION;
-        } else {
-            this.velocity.x *= PHYSICS.AIR_RESISTANCE;
+            if (this.isOnGround) {
+                // 環境と床タイプを考慮した摩擦
+                const env = (typeof window !== 'undefined' && window.game && window.game.environment) ? window.game.environment : null;
+                const baseDamp = 1 - PHYSICS.FRICTION; // 例: 0.2
+                const envScale = env ? env.frictionScale : 1.0;
+                const totalDamp = baseDamp * envScale * this.surfaceFrictionScale;
+                const effectiveFriction = 1 - Utils.clamp(totalDamp, 0, 0.9);
+                this.velocity.x *= effectiveFriction;
+            } else {
+                this.velocity.x *= PHYSICS.AIR_RESISTANCE;
             }
         }
         
@@ -195,9 +205,18 @@ class Player {
         // 改善されたジャンプシステム
         this.handleJump(input);
 
-        // 重力適用
-        this.velocity.y += PHYSICS.GRAVITY;
+        // 重力適用（環境スケール）
+        const env = (typeof window !== 'undefined' && window.game && window.game.environment) ? window.game.environment : null;
+        const gravityScale = env ? env.gravityScale : 1.0;
+        this.velocity.y += PHYSICS.GRAVITY * gravityScale;
         this.velocity.y = Utils.clamp(this.velocity.y, -20, PHYSICS.MAX_FALL_SPEED);
+
+        // 風（環境）
+        const windX = env ? env.windX : 0;
+        if (windX !== 0) {
+            this.velocity.x += windX * dtScale;
+            this.velocity.x = Utils.clamp(this.velocity.x, -PHYSICS.MAX_SPEED, PHYSICS.MAX_SPEED);
+        }
 
         // 位置更新
         this.x += this.velocity.x;
@@ -293,6 +312,7 @@ class Player {
 
     checkPlatformCollisions(platforms) {
         this.isOnGround = false;
+        this.surfaceFrictionScale = 1.0;
         
         if (!platforms || !Array.isArray(platforms)) return;
         
@@ -305,7 +325,29 @@ class Player {
                 this.isOnGround = true;
                 // より正確な位置修正
                 this.y = Math.min(this.y, collision.collision.y);
-                this.velocity.y = 0;
+                // 床タイプの効果
+                switch (platform.type) {
+                    case 'ice':
+                        this.surfaceFrictionScale = 0.5; // 滑りやすい
+                        this.velocity.y = 0;
+                        break;
+                    case 'mud':
+                        this.surfaceFrictionScale = 2.0; // 止まりやすい
+                        this.velocity.y = 0;
+                        break;
+                    case 'bounce':
+                        // バウンドして接地しない
+                        this.velocity.y = PHYSICS.JUMP_FORCE * 0.9;
+                        this.isOnGround = false;
+                        break;
+                    case 'spike':
+                        // ダメージを受ける（接地はする）
+                        this.velocity.y = 0;
+                        this.takeDamage();
+                        break;
+                    default:
+                        this.velocity.y = 0;
+                }
             }
         });
     }
@@ -482,8 +524,8 @@ class Player {
             // 体力制の敵に対応
             const died = typeof enemy.takeHit === 'function' ? enemy.takeHit() : true;
             if (died) {
-                // 敵撃破エフェクト
-                this.createEnemyDefeatEffect(enemy);
+        // 敵撃破エフェクト
+        this.createEnemyDefeatEffect(enemy);
             }
         }
     }
@@ -728,7 +770,7 @@ class Enemy {
         if (this.isDead) return;
 
         this.animation.update(deltaTime);
-        
+
         switch (this.type) {
             case 'jumper': {
                 // パトロール + 定期ジャンプ
@@ -795,15 +837,15 @@ class Enemy {
             }
             default: {
                 // basic: 既存のパトロール
-                this.x += this.velocity.x * this.direction;
+        this.x += this.velocity.x * this.direction;
                 if (this.x <= this.startX - this.patrolDistance || this.x >= this.startX + this.patrolDistance) {
-                    this.direction *= -1;
-                }
-                this.velocity.y += PHYSICS.GRAVITY;
-                this.velocity.y = Utils.clamp(this.velocity.y, -10, PHYSICS.MAX_FALL_SPEED);
-                this.y += this.velocity.y;
-                this.checkPlatformCollisions(platforms);
-                this.checkBounds();
+            this.direction *= -1;
+        }
+        this.velocity.y += PHYSICS.GRAVITY;
+        this.velocity.y = Utils.clamp(this.velocity.y, -10, PHYSICS.MAX_FALL_SPEED);
+        this.y += this.velocity.y;
+        this.checkPlatformCollisions(platforms);
+        this.checkBounds();
             }
         }
     }
@@ -992,7 +1034,7 @@ class Platform {
         this.y = y;
         this.width = width;
         this.height = height;
-        this.type = type; // 'normal', 'moving', 'breakable'
+        this.type = type; // 'normal', 'moving', 'breakable', 'ice', 'mud', 'bounce', 'spike'
         this.originalX = x;
         this.originalY = y;
         // デフォルトで移動距離と速度を設定（moving の場合に利用）
@@ -1020,6 +1062,18 @@ class Platform {
             case 'breakable':
                 color = this.health > 1 ? '#CD853F' : '#8B4513';
                 break;
+            case 'ice':
+                color = '#9DD6F9';
+                break;
+            case 'mud':
+                color = '#6B4F3A';
+                break;
+            case 'bounce':
+                color = '#4ADE80';
+                break;
+            case 'spike':
+                color = '#B91C1C';
+                break;
             default:
                 color = '#8B4513';
         }
@@ -1028,9 +1082,30 @@ class Platform {
         ctx.fillRect(this.x, this.y, this.width, this.height);
 
         // プラットフォームの装飾
+        if (this.type === 'ice') {
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.fillRect(this.x, this.y, this.width, 3);
+        } else if (this.type === 'mud') {
+            ctx.fillStyle = '#4E3827';
+            ctx.fillRect(this.x, this.y + this.height - 5, this.width, 5);
+        } else if (this.type === 'bounce') {
+            ctx.fillStyle = '#16A34A';
+            ctx.fillRect(this.x, this.y + this.height - 3, this.width, 3);
+        } else if (this.type === 'spike') {
+            ctx.fillStyle = '#7F1D1D';
+            for (let i = 0; i < this.width; i += 8) {
+                ctx.beginPath();
+                ctx.moveTo(this.x + i, this.y + this.height);
+                ctx.lineTo(this.x + i + 4, this.y + this.height - 8);
+                ctx.lineTo(this.x + i + 8, this.y + this.height);
+                ctx.closePath();
+                ctx.fill();
+            }
+        } else {
         ctx.fillStyle = '#654321';
         ctx.fillRect(this.x, this.y, this.width, 4);
         ctx.fillRect(this.x, this.y + this.height - 4, this.width, 4);
+        }
     }
 
     takeDamage() {
@@ -1193,10 +1268,34 @@ class Background {
     }
 
     render(ctx) {
-        // 柔らかなパステル空
+        // テーマに応じて背景色を変更
+        const env = (typeof window !== 'undefined' && window.game && window.game.environment) ? window.game.environment : { theme: 'day' };
+        let top = '#FFE5EC', bottom = '#CDEFFF';
+        switch (env.theme) {
+            case 'breeze':
+                top = '#E0FBFC'; bottom = '#C2E9FB';
+                break;
+            case 'snow':
+                top = '#E6F0FF'; bottom = '#F8FBFF';
+                break;
+            case 'swamp':
+                top = '#B7E4C7'; bottom = '#95D5B2';
+                break;
+            case 'volcano':
+                top = '#FFEDD5'; bottom = '#FED7AA';
+                break;
+            case 'night':
+                top = '#0F172A'; bottom = '#1E293B';
+                break;
+            case 'dusk':
+                top = '#FDE1D3'; bottom = '#C7D2FE';
+                break;
+            default:
+                top = '#FFE5EC'; bottom = '#CDEFFF';
+        }
         const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
-        gradient.addColorStop(0, '#FFE5EC');   // 桜色
-        gradient.addColorStop(1, '#CDEFFF');   // 水色
+        gradient.addColorStop(0, top);
+        gradient.addColorStop(1, bottom);
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
 
