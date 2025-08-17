@@ -15,6 +15,13 @@ class Game {
         this.isPaused = false;
         this.gameOver = false;
         
+        // ステージ管理
+        this.currentStage = 1;
+        this.maxStages = 5;
+        this.cameraX = 0;
+        this.cameraY = 0;
+        this.scrollThreshold = 400; // スクロール開始位置
+        
         // ゲームオブジェクト
         this.player = null;
         this.platforms = [];
@@ -152,46 +159,260 @@ class Game {
      * レベルの生成
      */
     generateLevel() {
-        // プラットフォームの生成
-        this.platforms = [
-            // 地面（位置を修正）
-            new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, GAME_CONFIG.CANVAS_WIDTH, 20),
-            
-            // 浮遊プラットフォーム
-            new Platform(200, 450, 120, 20),
-            new Platform(400, 350, 120, 20),
-            new Platform(600, 250, 120, 20),
-            new Platform(300, 150, 120, 20),
-            
-            // 移動プラットフォーム
-            new Platform(100, 300, 100, 20, 'moving'),
-            
-            // 破壊可能プラットフォーム
-            new Platform(500, 400, 80, 20, 'breakable'),
-        ];
+        this.platforms = [];
+        this.enemies = [];
+        this.coins = [];
+        this.powerUps = [];
+        
+        // ステージ1
+        if (this.currentStage === 1) {
+            this.generateStage1();
+        } else if (this.currentStage === 2) {
+            this.generateStage2();
+        } else if (this.currentStage === 3) {
+            this.generateStage3();
+        } else if (this.currentStage === 4) {
+            this.generateStage4();
+        } else if (this.currentStage === 5) {
+            this.generateStage5();
+        }
+    }
 
-        // 敵の生成
-        this.enemies = [
-            new Enemy(300, 400),
-            new Enemy(500, 200),
-            new Enemy(700, 500),
-        ];
+    /**
+     * ステージ1の生成
+     */
+    generateStage1() {
+        // 地面
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, GAME_CONFIG.CANVAS_WIDTH, 20));
+        
+        // 浮遊プラットフォーム
+        this.platforms.push(new Platform(200, 450, 120, 20));
+        this.platforms.push(new Platform(400, 350, 120, 20));
+        this.platforms.push(new Platform(600, 250, 120, 20));
+        this.platforms.push(new Platform(300, 150, 120, 20));
+        
+        // 移動プラットフォーム
+        this.platforms.push(new Platform(100, 300, 100, 20, 'moving'));
+        
+        // 破壊可能プラットフォーム
+        this.platforms.push(new Platform(500, 400, 80, 20, 'breakable'));
 
-        // コインの生成
-        this.coins = [
-            new Coin(250, 400),
-            new Coin(450, 300),
-            new Coin(650, 200),
-            new Coin(350, 100),
-            new Coin(150, 250),
-            new Coin(550, 350),
-        ];
+        // 敵
+        this.enemies.push(new Enemy(300, 400));
+        this.enemies.push(new Enemy(500, 200));
 
-        // パワーアップアイテムの生成
-        this.powerUps = [
-            new PowerUp(350, 300, 'jump'),      // ジャンプ力向上
-            new PowerUp(550, 150, 'invincible'), // 無敵状態
-        ];
+        // コイン
+        this.coins.push(new Coin(250, 400));
+        this.coins.push(new Coin(450, 300));
+        this.coins.push(new Coin(650, 200));
+        this.coins.push(new Coin(350, 100));
+
+        // パワーアップ
+        this.powerUps.push(new PowerUp(350, 300, 'jump'));
+    }
+
+    /**
+     * ステージ2の生成
+     */
+    generateStage2() {
+        const stageWidth = 1600; // ステージ2はより広い
+        
+        // 地面
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        
+        // より高いプラットフォーム
+        this.platforms.push(new Platform(300, 400, 120, 20));
+        this.platforms.push(new Platform(600, 300, 120, 20));
+        this.platforms.push(new Platform(900, 200, 120, 20));
+        this.platforms.push(new Platform(1200, 350, 120, 20));
+        this.platforms.push(new Platform(1400, 250, 120, 20));
+        
+        // 移動プラットフォーム
+        this.platforms.push(new Platform(450, 350, 100, 20, 'moving'));
+        this.platforms.push(new Platform(750, 250, 100, 20, 'moving'));
+
+        // 敵
+        this.enemies.push(new Enemy(400, 350));
+        this.enemies.push(new Enemy(700, 250));
+        this.enemies.push(new Enemy(1000, 150));
+        this.enemies.push(new Enemy(1300, 300));
+
+        // コイン
+        this.coins.push(new Coin(350, 350));
+        this.coins.push(new Coin(650, 250));
+        this.coins.push(new Coin(950, 150));
+        this.coins.push(new Coin(1250, 300));
+        this.coins.push(new Coin(1450, 200));
+
+        // パワーアップ
+        this.powerUps.push(new PowerUp(550, 150, 'invincible'));
+    }
+
+    /**
+     * ステージ3の生成
+     */
+    generateStage3() {
+        const stageWidth = 2000;
+        
+        // 地面
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        
+        // 複雑な配置
+        this.platforms.push(new Platform(200, 450, 100, 20));
+        this.platforms.push(new Platform(400, 350, 100, 20));
+        this.platforms.push(new Platform(600, 250, 100, 20));
+        this.platforms.push(new Platform(800, 150, 100, 20));
+        this.platforms.push(new Platform(1000, 300, 100, 20));
+        this.platforms.push(new Platform(1200, 200, 100, 20));
+        this.platforms.push(new Platform(1400, 400, 100, 20));
+        this.platforms.push(new Platform(1600, 250, 100, 20));
+        this.platforms.push(new Platform(1800, 350, 100, 20));
+        
+        // 移動プラットフォーム
+        this.platforms.push(new Platform(300, 300, 80, 20, 'moving'));
+        this.platforms.push(new Platform(700, 200, 80, 20, 'moving'));
+        this.platforms.push(new Platform(1100, 100, 80, 20, 'moving'));
+
+        // 敵
+        this.enemies.push(new Enemy(250, 400));
+        this.enemies.push(new Enemy(450, 300));
+        this.enemies.push(new Enemy(650, 200));
+        this.enemies.push(new Enemy(850, 100));
+        this.enemies.push(new Enemy(1050, 250));
+        this.enemies.push(new Enemy(1250, 150));
+
+        // コイン
+        this.coins.push(new Coin(250, 400));
+        this.coins.push(new Coin(450, 300));
+        this.coins.push(new Coin(650, 200));
+        this.coins.push(new Coin(850, 100));
+        this.coins.push(new Coin(1050, 250));
+        this.coins.push(new Coin(1250, 150));
+        this.coins.push(new Coin(1450, 350));
+        this.coins.push(new Coin(1650, 200));
+
+        // パワーアップ
+        this.powerUps.push(new PowerUp(550, 100, 'jump'));
+        this.powerUps.push(new PowerUp(1150, 50, 'invincible'));
+    }
+
+    /**
+     * ステージ4の生成
+     */
+    generateStage4() {
+        const stageWidth = 2400;
+        
+        // 地面
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        
+        // より困難な配置
+        this.platforms.push(new Platform(150, 450, 80, 20));
+        this.platforms.push(new Platform(350, 350, 80, 20));
+        this.platforms.push(new Platform(550, 250, 80, 20));
+        this.platforms.push(new Platform(750, 150, 80, 20));
+        this.platforms.push(new Platform(950, 300, 80, 20));
+        this.platforms.push(new Platform(1150, 200, 80, 20));
+        this.platforms.push(new Platform(1350, 400, 80, 20));
+        this.platforms.push(new Platform(1550, 250, 80, 20));
+        this.platforms.push(new Platform(1750, 350, 80, 20));
+        this.platforms.push(new Platform(1950, 200, 80, 20));
+        this.platforms.push(new Platform(2150, 300, 80, 20));
+        
+        // 移動プラットフォーム
+        this.platforms.push(new Platform(250, 300, 60, 20, 'moving'));
+        this.platforms.push(new Platform(650, 200, 60, 20, 'moving'));
+        this.platforms.push(new Platform(1050, 100, 60, 20, 'moving'));
+        this.platforms.push(new Platform(1450, 350, 60, 20, 'moving'));
+
+        // 敵
+        this.enemies.push(new Enemy(200, 400));
+        this.enemies.push(new Enemy(400, 300));
+        this.enemies.push(new Enemy(600, 200));
+        this.enemies.push(new Enemy(800, 100));
+        this.enemies.push(new Enemy(1000, 250));
+        this.enemies.push(new Enemy(1200, 150));
+        this.enemies.push(new Enemy(1400, 350));
+        this.enemies.push(new Enemy(1600, 200));
+
+        // コイン
+        this.coins.push(new Coin(200, 400));
+        this.coins.push(new Coin(400, 300));
+        this.coins.push(new Coin(600, 200));
+        this.coins.push(new Coin(800, 100));
+        this.coins.push(new Coin(1000, 250));
+        this.coins.push(new Coin(1200, 150));
+        this.coins.push(new Coin(1400, 350));
+        this.coins.push(new Coin(1600, 200));
+        this.coins.push(new Coin(1800, 300));
+        this.coins.push(new Coin(2000, 150));
+
+        // パワーアップ
+        this.powerUps.push(new PowerUp(450, 200, 'jump'));
+        this.powerUps.push(new PowerUp(1250, 100, 'invincible'));
+    }
+
+    /**
+     * ステージ5の生成（最終ステージ）
+     */
+    generateStage5() {
+        const stageWidth = 2800;
+        
+        // 地面
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        
+        // 最終ステージの困難な配置
+        this.platforms.push(new Platform(100, 450, 60, 20));
+        this.platforms.push(new Platform(300, 350, 60, 20));
+        this.platforms.push(new Platform(500, 250, 60, 20));
+        this.platforms.push(new Platform(700, 150, 60, 20));
+        this.platforms.push(new Platform(900, 300, 60, 20));
+        this.platforms.push(new Platform(1100, 200, 60, 20));
+        this.platforms.push(new Platform(1300, 400, 60, 20));
+        this.platforms.push(new Platform(1500, 250, 60, 20));
+        this.platforms.push(new Platform(1700, 350, 60, 20));
+        this.platforms.push(new Platform(1900, 200, 60, 20));
+        this.platforms.push(new Platform(2100, 300, 60, 20));
+        this.platforms.push(new Platform(2300, 150, 60, 20));
+        this.platforms.push(new Platform(2500, 250, 60, 20));
+        
+        // 移動プラットフォーム
+        this.platforms.push(new Platform(200, 300, 50, 20, 'moving'));
+        this.platforms.push(new Platform(600, 200, 50, 20, 'moving'));
+        this.platforms.push(new Platform(1000, 100, 50, 20, 'moving'));
+        this.platforms.push(new Platform(1400, 350, 50, 20, 'moving'));
+        this.platforms.push(new Platform(1800, 250, 50, 20, 'moving'));
+
+        // 敵
+        this.enemies.push(new Enemy(150, 400));
+        this.enemies.push(new Enemy(350, 300));
+        this.enemies.push(new Enemy(550, 200));
+        this.enemies.push(new Enemy(750, 100));
+        this.enemies.push(new Enemy(950, 250));
+        this.enemies.push(new Enemy(1150, 150));
+        this.enemies.push(new Enemy(1350, 350));
+        this.enemies.push(new Enemy(1550, 200));
+        this.enemies.push(new Enemy(1750, 300));
+        this.enemies.push(new Enemy(1950, 150));
+
+        // コイン
+        this.coins.push(new Coin(150, 400));
+        this.coins.push(new Coin(350, 300));
+        this.coins.push(new Coin(550, 200));
+        this.coins.push(new Coin(750, 100));
+        this.coins.push(new Coin(950, 250));
+        this.coins.push(new Coin(1150, 150));
+        this.coins.push(new Coin(1350, 350));
+        this.coins.push(new Coin(1550, 200));
+        this.coins.push(new Coin(1750, 300));
+        this.coins.push(new Coin(1950, 150));
+        this.coins.push(new Coin(2150, 250));
+        this.coins.push(new Coin(2350, 100));
+        this.coins.push(new Coin(2550, 200));
+
+        // パワーアップ
+        this.powerUps.push(new PowerUp(350, 200, 'jump'));
+        this.powerUps.push(new PowerUp(1150, 50, 'invincible'));
+        this.powerUps.push(new PowerUp(1950, 100, 'jump'));
     }
 
     /**
@@ -244,6 +465,12 @@ class Game {
             this.background.update(this.deltaTime, this.player ? this.player.velocity.x : 0);
         }
 
+        // カメラスクロール更新
+        this.updateCamera();
+
+        // ステージ進行チェック
+        this.checkStageProgress();
+
         // プラットフォーム更新
         if (this.platforms && Array.isArray(this.platforms)) {
             this.platforms.forEach(platform => {
@@ -294,11 +521,140 @@ class Game {
     }
 
     /**
+     * カメラスクロール更新
+     */
+    updateCamera() {
+        if (!this.player) return;
+
+        // プレイヤーが画面中央より右に移動したらカメラをスクロール
+        const targetCameraX = this.player.x - this.scrollThreshold;
+        
+        // スムーズなカメラ追従
+        this.cameraX += (targetCameraX - this.cameraX) * 0.1;
+        
+        // カメラの範囲制限
+        this.cameraX = Math.max(0, this.cameraX);
+    }
+
+    /**
+     * ステージ進行チェック
+     */
+    checkStageProgress() {
+        if (!this.player) return;
+
+        // 現在のステージの幅を取得
+        let currentStageWidth = GAME_CONFIG.CANVAS_WIDTH;
+        if (this.currentStage === 2) currentStageWidth = 1600;
+        else if (this.currentStage === 3) currentStageWidth = 2000;
+        else if (this.currentStage === 4) currentStageWidth = 2400;
+        else if (this.currentStage === 5) currentStageWidth = 2800;
+
+        // プレイヤーがステージの右端に到達したら次のステージへ
+        if (this.player.x >= currentStageWidth - 100) {
+            this.nextStage();
+        }
+    }
+
+    /**
+     * 次のステージへ進む
+     */
+    nextStage() {
+        if (this.currentStage < this.maxStages) {
+            this.currentStage++;
+            
+            // プレイヤーを次のステージの開始位置に移動
+            this.player.x = 100;
+            this.player.y = 500;
+            this.player.velocity = new Vector2(0, 0);
+            
+            // カメラをリセット
+            this.cameraX = 0;
+            
+            // 新しいステージを生成
+            this.generateLevel();
+            
+            // ステージ進行エフェクト
+            this.showStageTransition();
+        } else {
+            // 最終ステージクリア
+            this.showGameClear();
+        }
+    }
+
+    /**
+     * ステージ進行エフェクト
+     */
+    showStageTransition() {
+        // ステージ進行メッセージを表示
+        const stageDiv = document.createElement('div');
+        stageDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+        `;
+        stageDiv.textContent = `ステージ ${this.currentStage} 開始！`;
+        document.body.appendChild(stageDiv);
+        
+        // 3秒後に削除
+        setTimeout(() => {
+            if (stageDiv.parentNode) {
+                stageDiv.parentNode.removeChild(stageDiv);
+            }
+        }, 3000);
+    }
+
+    /**
+     * ゲームクリア表示
+     */
+    showGameClear() {
+        this.gameOver = true;
+        this.isRunning = false;
+        
+        const clearDiv = document.createElement('div');
+        clearDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 255, 0, 0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            z-index: 1000;
+            text-align: center;
+            font-size: 28px;
+            font-weight: bold;
+        `;
+        clearDiv.innerHTML = `
+            <h2>🎉 ゲームクリア！ 🎉</h2>
+            <p>最終スコア: ${this.player.score}</p>
+            <button onclick="window.game.restart()" 
+                    style="background: white; color: green; border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer; font-size: 18px; margin-top: 20px;">
+                もう一度プレイ
+            </button>
+        `;
+        document.body.appendChild(clearDiv);
+    }
+
+    /**
      * レンダリング
      */
     render() {
         // Canvasをクリア
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // カメラ変換を適用
+        this.ctx.save();
+        this.ctx.translate(-this.cameraX, -this.cameraY);
 
         // 背景描画
         if (this.background && typeof this.background.render === 'function') {
@@ -346,6 +702,17 @@ class Game {
             this.player.render(this.ctx);
         }
 
+        // カメラ変換を復元
+        this.ctx.restore();
+
+        // UI要素（カメラ変換の影響を受けない）
+        this.renderUI();
+    }
+
+    /**
+     * UI描画
+     */
+    renderUI() {
         // FPS表示（デバッグ用）
         if (this.fps > 0) {
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -354,6 +721,13 @@ class Game {
             this.ctx.font = '12px Arial';
             this.ctx.fillText(`FPS: ${this.fps}`, 15, 65);
         }
+
+        // ステージ表示
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        this.ctx.fillRect(10, 10, 100, 30);
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText(`ステージ: ${this.currentStage}`, 15, 30);
     }
 
     /**
@@ -402,6 +776,11 @@ class Game {
             this.gameOver = false;
             this.isRunning = false;
             this.isPaused = false;
+            
+            // ステージをリセット
+            this.currentStage = 1;
+            this.cameraX = 0;
+            this.cameraY = 0;
             
             // ゲームオーバー画面を非表示
             if (this.gameOverElement) {
