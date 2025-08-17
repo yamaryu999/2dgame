@@ -227,14 +227,18 @@ class Player {
 
     checkBounds() {
         // 左右の境界（より自然な処理）
+        const worldWidth = (typeof window !== 'undefined' && window.game && typeof window.game.getCurrentStageWidth === 'function')
+            ? window.game.getCurrentStageWidth()
+            : GAME_CONFIG.CANVAS_WIDTH;
+
         if (this.x < 0) {
             this.x = 0;
             // 壁に当たった時の自然な停止
             if (this.velocity.x < 0) {
                 this.velocity.x = 0;
             }
-        } else if (this.x + this.width > GAME_CONFIG.CANVAS_WIDTH) {
-            this.x = GAME_CONFIG.CANVAS_WIDTH - this.width;
+        } else if (this.x + this.width > worldWidth) {
+            this.x = worldWidth - this.width;
             // 壁に当たった時の自然な停止
             if (this.velocity.x > 0) {
                 this.velocity.x = 0;
@@ -625,11 +629,15 @@ class Enemy {
 
     checkBounds() {
         // 左右の境界
+        const worldWidth = (typeof window !== 'undefined' && window.game && typeof window.game.getCurrentStageWidth === 'function')
+            ? window.game.getCurrentStageWidth()
+            : GAME_CONFIG.CANVAS_WIDTH;
+
         if (this.x < 0) {
             this.x = 0;
             this.direction = 1;
-        } else if (this.x + this.width > GAME_CONFIG.CANVAS_WIDTH) {
-            this.x = GAME_CONFIG.CANVAS_WIDTH - this.width;
+        } else if (this.x + this.width > worldWidth) {
+            this.x = worldWidth - this.width;
             this.direction = -1;
         }
 

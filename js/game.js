@@ -17,7 +17,7 @@ class Game {
         
         // ステージ管理
         this.currentStage = 1;
-        this.maxStages = 5;
+        this.maxStages = 10;
         this.cameraX = 0;
         this.cameraY = 0;
         this.scrollThreshold = 400; // スクロール開始位置
@@ -175,6 +175,16 @@ class Game {
             this.generateStage4();
         } else if (this.currentStage === 5) {
             this.generateStage5();
+        } else if (this.currentStage === 6) {
+            this.generateStage6();
+        } else if (this.currentStage === 7) {
+            this.generateStage7();
+        } else if (this.currentStage === 8) {
+            this.generateStage8();
+        } else if (this.currentStage === 9) {
+            this.generateStage9();
+        } else if (this.currentStage === 10) {
+            this.generateStage10();
         }
     }
 
@@ -416,6 +426,105 @@ class Game {
     }
 
     /**
+     * ステージ6の生成
+     */
+    generateStage6() {
+        const stageWidth = 3200;
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        for (let x = 200; x <= 3000; x += 200) {
+            this.platforms.push(new Platform(x, 400 - (x % 400) / 5, 100, 20));
+        }
+        this.platforms.push(new Platform(500, 300, 100, 20, 'moving'));
+        this.platforms.push(new Platform(1500, 250, 100, 20, 'moving'));
+        this.enemies.push(new Enemy(800, 350));
+        this.enemies.push(new Enemy(1600, 300));
+        this.enemies.push(new Enemy(2400, 250));
+        for (let x = 300; x <= 2900; x += 300) this.coins.push(new Coin(x, 350));
+        this.powerUps.push(new PowerUp(1000, 200, 'jump'));
+        this.powerUps.push(new PowerUp(2200, 150, 'invincible'));
+    }
+
+    /**
+     * ステージ7の生成
+     */
+    generateStage7() {
+        const stageWidth = 3600;
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        const heights = [450, 350, 250, 350, 200, 300, 250];
+        for (let i = 0; i < 14; i++) {
+            const x = 200 + i * 240;
+            const h = heights[i % heights.length];
+            this.platforms.push(new Platform(x, h, 120, 20));
+        }
+        this.platforms.push(new Platform(900, 200, 80, 20, 'moving'));
+        this.platforms.push(new Platform(2100, 150, 80, 20, 'moving'));
+        this.enemies.push(new Enemy(1000, 320));
+        this.enemies.push(new Enemy(2000, 280));
+        this.enemies.push(new Enemy(3000, 240));
+        for (let x = 250; x <= 3400; x += 250) this.coins.push(new Coin(x, 280));
+        this.powerUps.push(new PowerUp(1700, 180, 'jump'));
+    }
+
+    /**
+     * ステージ8の生成
+     */
+    generateStage8() {
+        const stageWidth = 4000;
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        for (let i = 0; i < 10; i++) {
+            const x = 300 + i * 350;
+            this.platforms.push(new Platform(x, 420 - (i % 2) * 180, 100, 20));
+            this.platforms.push(new Platform(x + 150, 260 + (i % 2) * 120, 100, 20));
+        }
+        for (let i = 0; i < 5; i++) this.platforms.push(new Platform(700 + i * 600, 200, 80, 20, 'moving'));
+        for (let i = 0; i < 8; i++) this.enemies.push(new Enemy(500 + i * 400, 300));
+        for (let i = 0; i < 12; i++) this.coins.push(new Coin(400 + i * 300, 240));
+        this.powerUps.push(new PowerUp(2000, 120, 'invincible'));
+    }
+
+    /**
+     * ステージ9の生成
+     */
+    generateStage9() {
+        const stageWidth = 4400;
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        for (let i = 0; i < 16; i++) {
+            const x = 200 + i * 260;
+            const w = 80 + (i % 3) * 40;
+            const y = 420 - ((i * 70) % 300);
+            this.platforms.push(new Platform(x, y, w, 20));
+        }
+        this.platforms.push(new Platform(1200, 180, 70, 20, 'moving'));
+        this.platforms.push(new Platform(2600, 160, 70, 20, 'moving'));
+        for (let i = 0; i < 10; i++) this.enemies.push(new Enemy(600 + i * 350, 260));
+        for (let i = 0; i < 16; i++) this.coins.push(new Coin(300 + i * 250, 220));
+        this.powerUps.push(new PowerUp(3200, 140, 'jump'));
+    }
+
+    /**
+     * ステージ10の生成
+     */
+    generateStage10() {
+        const stageWidth = 4800;
+        this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20));
+        // ジグザグの小さな足場
+        for (let i = 0; i < 18; i++) {
+            const x = 200 + i * 250;
+            const y = 450 - (i % 2) * 220;
+            this.platforms.push(new Platform(x, y, 70, 18));
+        }
+        // 多数の移動足場
+        for (let i = 0; i < 8; i++) this.platforms.push(new Platform(600 + i * 500, 220 + (i % 3) * 60, 70, 18, 'moving'));
+        // 敵を密集配置
+        for (let i = 0; i < 12; i++) this.enemies.push(new Enemy(500 + i * 350, 240));
+        // コイン大量
+        for (let i = 0; i < 20; i++) this.coins.push(new Coin(300 + i * 220, 200 + (i % 3) * 60));
+        // パワーアップを複数
+        this.powerUps.push(new PowerUp(1800, 120, 'invincible'));
+        this.powerUps.push(new PowerUp(3600, 100, 'jump'));
+    }
+
+    /**
      * ゲーム開始
      */
     start() {
@@ -543,11 +652,7 @@ class Game {
         if (!this.player) return;
 
         // 現在のステージの幅を取得
-        let currentStageWidth = GAME_CONFIG.CANVAS_WIDTH;
-        if (this.currentStage === 2) currentStageWidth = 1600;
-        else if (this.currentStage === 3) currentStageWidth = 2000;
-        else if (this.currentStage === 4) currentStageWidth = 2400;
-        else if (this.currentStage === 5) currentStageWidth = 2800;
+        let currentStageWidth = this.getCurrentStageWidth();
 
         // プレイヤーがステージの右端に到達したら次のステージへ
         if (this.player.x >= currentStageWidth - 100) {
@@ -578,6 +683,25 @@ class Game {
         } else {
             // 最終ステージクリア
             this.showGameClear();
+        }
+    }
+
+    /**
+     * 現在のステージ幅を返す
+     */
+    getCurrentStageWidth() {
+        switch (this.currentStage) {
+            case 1: return GAME_CONFIG.CANVAS_WIDTH;
+            case 2: return 1600;
+            case 3: return 2000;
+            case 4: return 2400;
+            case 5: return 2800;
+            case 6: return 3200;
+            case 7: return 3600;
+            case 8: return 4000;
+            case 9: return 4400;
+            case 10: return 4800;
+            default: return GAME_CONFIG.CANVAS_WIDTH;
         }
     }
 
@@ -652,14 +776,14 @@ class Game {
         // Canvasをクリア
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // カメラ変換を適用
-        this.ctx.save();
-        this.ctx.translate(-this.cameraX, -this.cameraY);
-
-        // 背景描画
+        // 背景は画面基準で描画（カメラ変換の外）
         if (this.background && typeof this.background.render === 'function') {
             this.background.render(this.ctx);
         }
+
+        // カメラ変換を適用
+        this.ctx.save();
+        this.ctx.translate(-this.cameraX, -this.cameraY);
 
         // プラットフォーム描画
         if (this.platforms && Array.isArray(this.platforms)) {
