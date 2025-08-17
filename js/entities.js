@@ -93,10 +93,10 @@ class Player {
         
         // 入力がない時のみ摩擦/空気抵抗を適用（暴走防止）
         if (targetVelocityX === 0) {
-            if (this.isOnGround) {
-                this.velocity.x *= PHYSICS.FRICTION;
-            } else {
-                this.velocity.x *= PHYSICS.AIR_RESISTANCE;
+        if (this.isOnGround) {
+            this.velocity.x *= PHYSICS.FRICTION;
+        } else {
+            this.velocity.x *= PHYSICS.AIR_RESISTANCE;
             }
         }
         
@@ -487,7 +487,8 @@ class Player {
 
         // プレイヤーの描画
         const frame = this.animation.getCurrentFrame();
-        let playerColor = frame.color;
+        // 猫らしいベースカラー（デフォルトはオレンジ系）
+        let playerColor = '#F4A261';
         
         // パワーアップ状態に応じて色を変更
         if (this.powerUps.jumpBoost) {
@@ -506,20 +507,69 @@ class Player {
             ctx.translate(-centerX, 0);
         }
         
-        ctx.fillRect(this.x, this.y + frame.offset, this.width, this.height);
-        
-        // 目を描画
-        ctx.fillStyle = '#000';
-        const eyeSize = 4;
-        const eyeY = this.y + 8 + frame.offset;
-        
-        if (this.facingRight) {
-            ctx.fillRect(this.x + 8, eyeY, eyeSize, eyeSize);
-            ctx.fillRect(this.x + 20, eyeY, eyeSize, eyeSize);
-        } else {
-            ctx.fillRect(this.x + 8, eyeY, eyeSize, eyeSize);
-            ctx.fillRect(this.x + 20, eyeY, eyeSize, eyeSize);
-        }
+        // 猫キャラクターの描画（当たり判定サイズは維持）
+        const x = this.x;
+        const y = this.y + frame.offset;
+        const w = this.width;
+        const h = this.height;
+
+        // 尻尾（曲線）
+        ctx.strokeStyle = '#D17C45';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x + w - 2, y + h * 0.6);
+        ctx.quadraticCurveTo(x + w + 10, y + h * 0.5, x + w + 14, y + h * 0.2);
+        ctx.stroke();
+
+        // 体（楕円）
+        ctx.fillStyle = playerColor;
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 耳（三角形）
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.2, y + h * 0.15);
+        ctx.lineTo(x + w * 0.35, y + h * 0.05);
+        ctx.lineTo(x + w * 0.35, y + h * 0.25);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.8, y + h * 0.15);
+        ctx.lineTo(x + w * 0.65, y + h * 0.05);
+        ctx.lineTo(x + w * 0.65, y + h * 0.25);
+        ctx.closePath();
+        ctx.fill();
+
+        // 顔（目・ひげ）
+        const eyeR = 3;
+        const eyeY = y + h * 0.38;
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.arc(x + w * 0.4, eyeY, eyeR, 0, Math.PI * 2);
+        ctx.arc(x + w * 0.6, eyeY, eyeR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 鼻
+        ctx.fillStyle = '#E76F51';
+        ctx.beginPath();
+        ctx.arc(x + w * 0.5, eyeY + 5, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // ひげ
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.35, eyeY + 6);
+        ctx.lineTo(x + w * 0.18, eyeY + 4);
+        ctx.moveTo(x + w * 0.35, eyeY + 8);
+        ctx.lineTo(x + w * 0.18, eyeY + 10);
+        ctx.moveTo(x + w * 0.65, eyeY + 6);
+        ctx.lineTo(x + w * 0.82, eyeY + 4);
+        ctx.moveTo(x + w * 0.65, eyeY + 8);
+        ctx.lineTo(x + w * 0.82, eyeY + 10);
+        ctx.stroke();
         
         ctx.restore();
         
@@ -576,11 +626,12 @@ class Enemy {
     }
 
     createAnimation() {
+        // ネズミ風のグレーカラー
         const frames = [
-            { color: '#FF4444', offset: 0 },
-            { color: '#FF6666', offset: 0 },
-            { color: '#FF4444', offset: 0 },
-            { color: '#CC3333', offset: 0 }
+            { color: '#A3A7AE', offset: 0 },
+            { color: '#B5BAC3', offset: 0 },
+            { color: '#A3A7AE', offset: 0 },
+            { color: '#8F949C', offset: 0 }
         ];
         return new Animation(frames, 200);
     }
@@ -651,15 +702,44 @@ class Enemy {
         if (this.isDead) return;
 
         const frame = this.animation.getCurrentFrame();
-        ctx.fillStyle = frame.color;
-        ctx.fillRect(this.x, this.y + frame.offset, this.width, this.height);
+        const x = this.x;
+        const y = this.y + frame.offset;
+        const w = this.width;
+        const h = this.height;
 
-        // 目を描画
-        ctx.fillStyle = '#000';
-        const eyeSize = 3;
-        const eyeY = this.y + 6 + frame.offset;
-        ctx.fillRect(this.x + 6, eyeY, eyeSize, eyeSize);
-        ctx.fillRect(this.x + 15, eyeY, eyeSize, eyeSize);
+        // 体（楕円）
+        ctx.fillStyle = frame.color;
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 耳
+        ctx.fillStyle = '#C0C4CC';
+        ctx.beginPath();
+        ctx.arc(x + w * 0.3, y + h * 0.25, 4, 0, Math.PI * 2);
+        ctx.arc(x + w * 0.7, y + h * 0.25, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 目
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.arc(x + w * 0.4, y + h * 0.45, 2, 0, Math.PI * 2);
+        ctx.arc(x + w * 0.6, y + h * 0.45, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 鼻
+        ctx.fillStyle = '#D87C7C';
+        ctx.beginPath();
+        ctx.arc(x + w * 0.5, y + h * 0.55, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // しっぽ
+        ctx.strokeStyle = '#8F949C';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.8, y + h * 0.6);
+        ctx.quadraticCurveTo(x + w + 6, y + h * 0.5, x + w + 10, y + h * 0.4);
+        ctx.stroke();
     }
 }
 
@@ -705,22 +785,42 @@ class Coin {
         ctx.rotate(Utils.toRadians(frame.rotation));
         ctx.scale(frame.scale, frame.scale);
         
-        // コインの描画
-        ctx.fillStyle = '#FFD700';
+        // 魚トークンの描画
+        const bodyW = this.width * 0.8;
+        const bodyH = this.height * 0.45;
+        
+        // 身体（楕円）
+        ctx.fillStyle = '#FFD166';
         ctx.beginPath();
-        ctx.arc(0, 0, this.width / 2, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, bodyW / 2, bodyH / 2, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // コインの内側
-        ctx.fillStyle = '#FFA500';
+        // 尾ビレ（三角形）
         ctx.beginPath();
-        ctx.arc(0, 0, this.width / 3, 0, Math.PI * 2);
+        ctx.moveTo(bodyW / 2, 0);
+        ctx.lineTo(bodyW / 2 + 8, 5);
+        ctx.lineTo(bodyW / 2 + 8, -5);
+        ctx.closePath();
         ctx.fill();
         
-        // コインの中心
-        ctx.fillStyle = '#FF8C00';
+        // 背ビレ・腹ビレ
         ctx.beginPath();
-        ctx.arc(0, 0, this.width / 6, 0, Math.PI * 2);
+        ctx.moveTo(-4, -bodyH / 2);
+        ctx.lineTo(4, -bodyH / 2 - 6);
+        ctx.lineTo(8, -bodyH / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(0, bodyH / 2);
+        ctx.lineTo(6, bodyH / 2 + 6);
+        ctx.lineTo(10, bodyH / 2);
+        ctx.closePath();
+        ctx.fill();
+
+        // 目
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.arc(-bodyW * 0.25, -1, 1.6, 0, Math.PI * 2);
         ctx.fill();
         
         ctx.restore();
@@ -832,56 +932,70 @@ class PowerUp {
         ctx.translate(this.x + this.width / 2, floatY + this.height / 2);
         ctx.scale(frame.scale, frame.scale);
         
-        // パワーアップの種類に応じた描画
+        // パワーアップの種類に応じた描画（猫モチーフ）
         if (this.type === 'jump') {
-            // ジャンプ力向上（緑色の星）
-            ctx.fillStyle = '#00FF00';
-            this.drawStar(ctx, 0, 0, 5, 10, 5);
+            // 猫草（キャットニップ）の葉
+            this.drawLeaf(ctx, 0, 0, 12);
         } else if (this.type === 'invincible') {
-            // 無敵状態（金色の盾）
-            ctx.fillStyle = '#FFD700';
-            this.drawShield(ctx, 0, 0, 10);
+            // 鈴（首輪の鈴）
+            this.drawBell(ctx, 0, 0, 10);
         }
         
         ctx.restore();
     }
 
-    drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
-        let rot = Math.PI / 2 * 3;
-        let x = cx;
-        let y = cy;
-        const step = Math.PI / spikes;
+    drawLeaf(ctx, cx, cy, size) {
+        ctx.save();
+        ctx.fillStyle = '#34D399';
+        ctx.strokeStyle = '#059669';
+        ctx.lineWidth = 1.5;
 
         ctx.beginPath();
-        ctx.moveTo(cx, cy - outerRadius);
-        
-        for (let i = 0; i < spikes; i++) {
-            x = cx + Math.cos(rot) * outerRadius;
-            y = cy + Math.sin(rot) * outerRadius;
-            ctx.lineTo(x, y);
-            rot += step;
-
-            x = cx + Math.cos(rot) * innerRadius;
-            y = cy + Math.sin(rot) * innerRadius;
-            ctx.lineTo(x, y);
-            rot += step;
-        }
-        
-        ctx.lineTo(cx, cy - outerRadius);
+        ctx.moveTo(cx, cy - size * 0.8);
+        ctx.quadraticCurveTo(cx + size * 0.8, cy - size * 0.2, cx, cy + size * 0.8);
+        ctx.quadraticCurveTo(cx - size * 0.8, cy - size * 0.2, cx, cy - size * 0.8);
         ctx.closePath();
         ctx.fill();
+        ctx.stroke();
+
+        // 葉脈
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + size * 0.7);
+        ctx.lineTo(cx, cy - size * 0.6);
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + size * 0.35, cy - size * 0.15);
+        ctx.moveTo(cx, cy + size * 0.1);
+        ctx.lineTo(cx - size * 0.35, cy - size * 0.05);
+        ctx.stroke();
+        ctx.restore();
     }
 
-    drawShield(ctx, cx, cy, radius) {
+    drawBell(ctx, cx, cy, radius) {
+        ctx.save();
+        // 本体
+        const gold = '#FBBF24';
+        const goldDark = '#D97706';
+        ctx.fillStyle = gold;
         ctx.beginPath();
-        ctx.moveTo(cx, cy - radius);
-        ctx.lineTo(cx + radius * 0.8, cy - radius * 0.3);
-        ctx.lineTo(cx + radius * 0.6, cy + radius * 0.5);
-        ctx.lineTo(cx, cy + radius);
-        ctx.lineTo(cx - radius * 0.6, cy + radius * 0.5);
-        ctx.lineTo(cx - radius * 0.8, cy - radius * 0.3);
-        ctx.closePath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.fill();
+
+        // 帯
+        ctx.fillStyle = goldDark;
+        ctx.fillRect(cx - radius * 0.8, cy - radius * 0.5, radius * 1.6, radius * 0.25);
+
+        // 反射ハイライト
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.arc(cx - radius * 0.3, cy - radius * 0.3, radius * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        // りん（舌）
+        ctx.fillStyle = goldDark;
+        ctx.beginPath();
+        ctx.arc(cx, cy + radius * 0.6, radius * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -923,21 +1037,28 @@ class Background {
     }
 
     render(ctx) {
-        // 空のグラデーション
+        // 柔らかなパステル空
         const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
-        gradient.addColorStop(0, '#87CEEB');
-        gradient.addColorStop(1, '#98FB98');
+        gradient.addColorStop(0, '#FFE5EC');   // 桜色
+        gradient.addColorStop(1, '#CDEFFF');   // 水色
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
 
-        // 雲の描画
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        this.clouds.forEach(cloud => {
+        // 肉球雲
+        const drawPaw = (cx, cy, s) => {
             ctx.beginPath();
-            ctx.arc(cloud.x, cloud.y, cloud.width / 3, 0, Math.PI * 2);
-            ctx.arc(cloud.x + cloud.width / 3, cloud.y, cloud.height / 2, 0, Math.PI * 2);
-            ctx.arc(cloud.x + cloud.width * 2 / 3, cloud.y, cloud.width / 3, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+            // 肉球本体
+            ctx.arc(cx, cy, s, 0, Math.PI * 2);
+            // 指
+            ctx.arc(cx - s, cy - s * 1.4, s * 0.45, 0, Math.PI * 2);
+            ctx.arc(cx, cy - s * 1.6, s * 0.45, 0, Math.PI * 2);
+            ctx.arc(cx + s, cy - s * 1.4, s * 0.45, 0, Math.PI * 2);
             ctx.fill();
+        };
+
+        this.clouds.forEach(cloud => {
+            drawPaw(cloud.x, cloud.y, Math.min(cloud.width, cloud.height) / 3);
         });
     }
 }
