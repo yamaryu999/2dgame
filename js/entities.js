@@ -533,7 +533,7 @@ class Player {
             }
             if (collected) {
                 try { if (window.game && typeof window.game.bumpCombo === 'function') window.game.bumpCombo('coin'); } catch (e) { /* noop */ }
-                this.score += 10;
+                this.addScore?.(10);
                 coin.collected = true; // 収集済みフラグを設定
                 coins.splice(i, 1);
                 
@@ -694,7 +694,7 @@ class Player {
 
     defeatEnemy(enemy) {
         this.velocity.y = PHYSICS.JUMP_FORCE * 0.7; // 小さなジャンプ
-        this.score += 20;
+        this.addScore?.(20);
         
         if (enemy) {
             // 体力制の敵に対応
