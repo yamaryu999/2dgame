@@ -119,10 +119,12 @@ class Vector2 {
  */
 class Rectangle {
     constructor(x, y, width, height) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
+        // NaN/Infinity混入の被害を抑えるためのサニタイズ
+        const toNum = (v, def = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : def);
+        this.x = toNum(x, 0);
+        this.y = toNum(y, 0);
+        this.width = Math.max(0, toNum(width, 0));
+        this.height = Math.max(0, toNum(height, 0));
     }
 
     get left() { return this.x; }
@@ -209,7 +211,10 @@ class CollisionDetector {
     static checkEnemyCollision(player, enemy) {
         const playerRect = new Rectangle(player.x, player.y, player.width, player.height);
         const enemyRect = new Rectangle(enemy.x, enemy.y, enemy.width, enemy.height);
-        
+        // 無効サイズ（幅/高さゼロ）やNaNが来た時は衝突にしない
+        if (playerRect.width <= 0 || playerRect.height <= 0 || enemyRect.width <= 0 || enemyRect.height <= 0) {
+            return false;
+        }
         return this.checkCollision(playerRect, enemyRect);
     }
 

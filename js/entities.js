@@ -982,6 +982,7 @@ class Enemy {
     constructor(x, y, type = 'basic') {
         this.x = x;
         this.y = y;
+        this.originalY = y; // flyer 用の基準Y（未初期化対策）
         this.width = 24;
         this.height = 24;
         this.velocity = new Vector2(-GAME_CONFIG.ENEMY_SPEED, 0);
