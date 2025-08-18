@@ -93,7 +93,6 @@
             box-shadow: var(--shadow-md);
         }
 
-        .controls,
         .controls-left,
         .controls-right {
             position: absolute;
@@ -104,6 +103,21 @@
             gap: 16px;
             z-index: 10;
             padding: 8px 12px;
+            background: var(--surface);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            backdrop-filter: blur(8px);
+            box-shadow: var(--shadow-md);
+        }
+
+        /* デスクトップの操作パネルはキャンバス上に重ならないよう通常フローに配置 */
+        .controls {
+            position: static;
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            padding: 8px 12px;
+            margin-bottom: 10px;
             background: var(--surface);
             border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 999px;
@@ -194,6 +208,8 @@
             }
             .controls-left { left: 14px; }
             .controls-right { right: 14px; }
+            /* 下部パネルが重ならないようコンテナに余白を確保 */
+            .game-container { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
             
             .control-btn {
                 width: 64px;
