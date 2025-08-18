@@ -12,7 +12,12 @@ const PHYSICS = {
     DECELERATION: 0.6,     // 減速度を調整
     JUMP_FORCE: -15,       // ジャンプ力を大幅に向上
     MAX_FALL_SPEED: 12,    // 最大落下速度を調整
-    MAX_SPEED: 4           // 最大速度を下げて制御しやすく
+    MAX_SPEED: 4,          // 最大速度を下げて制御しやすく
+    // 追加: アクション系
+    DASH_SPEED: 10,
+    WALL_SLIDE_SPEED: 2.5,
+    WALL_JUMP_X: 6,
+    MAGNET_RADIUS: 110
 };
 
 // ゲーム設定
@@ -22,6 +27,55 @@ const GAME_CONFIG = {
     CANVAS_HEIGHT: 600,
     PLAYER_SPEED: 6,       // プレイヤー速度を向上
     ENEMY_SPEED: 2
+};
+
+/**
+ * カラーパレット（色彩理論ベース: クール基調 + ウォームアクセント）
+ * - ベースはインディゴ/シアン系（視認性と落ち着き）
+ * - アクセントにアンバー（注目要素: コイン/無敵）
+ * - 状態色はエメラルド/レッドで直感的に
+ */
+const PALETTE = {
+    role: {
+        primary: '#6366F1',          // Indigo-500
+        secondary: '#06B6D4',        // Cyan-500
+        accent: '#F59E0B',           // Amber-500
+        success: '#10B981',          // Emerald-500
+        danger: '#EF4444',           // Red-500
+        outline: 'rgba(0,0,0,0.35)'
+    },
+    entity: {
+        player: '#F59E0B',           // プレイヤー（温かみのある橙）
+        coin: '#FBBF24',             // コイン（アンバー-400）
+        powerJump: '#22C55E',        // ジャンプ強化（Green-500）
+        powerInvincible: '#FBBF24'   // 無敵（ゴールド系）
+    },
+    enemy: {
+        basic: ['#94A3B8', '#B0BEC5', '#94A3B8', '#64748B'],   // ブルーグレー系
+        jumper: ['#34D399', '#6EE7B7', '#34D399', '#10B981'], // グリーン系（動きの軽快さ）
+        chaser: ['#A78BFA', '#C4B5FD', '#A78BFA', '#8B5CF6'], // バイオレット系（俊敏）
+        flyer: ['#60A5FA', '#93C5FD', '#06B6D4', '#0EA5E9'],  // ブルー/シアン（空）
+        tank: ['#9CA3AF', '#6B7280', '#9CA3AF', '#4B5563']    // ニュートラルグレー（重厚）
+    },
+    platform: {
+        normal: '#8B5E3C',
+        moving: '#A06B42',
+        breakableHigh: '#CD853F',
+        breakableLow: '#8B4513',
+        ice: '#93C5FD',
+        mud: '#6B4F3A',
+        bounce: '#22C55E',
+        spike: '#EF4444'
+    },
+    background: {
+        day: ['#E0F2FE', '#BAE6FD'],
+        breeze: ['#CCFBF1', '#A7F3D0'],
+        snow: ['#E6F0FF', '#F8FBFF'],
+        swamp: ['#D1FAE5', '#A7F3D0'],
+        volcano: ['#FDE68A', '#FDBA74'],
+        night: ['#0B1220', '#111827'],
+        dusk: ['#FDE1D3', '#C7D2FE']
+    }
 };
 
 /**
@@ -107,16 +161,36 @@ class CollisionDetector {
         const playerRect = new Rectangle(player.x, player.y, player.width, player.height);
         const platformRect = new Rectangle(platform.x, platform.y, platform.width, platform.height);
         
+        // 前フレーム位置（速度から逆算）
+        const prevX = player.x - player.velocity.x;
+        const prevY = player.y - player.velocity.y;
+        const prevBottom = prevY + player.height;
+        const currentBottom = player.y + player.height;
+        const platformTop = platform.y;
+        const currentHorizOverlap = playerRect.right > platformRect.left && playerRect.left < platformRect.right;
+        const prevHorizOverlap = (prevX + player.width) > platformRect.left && prevX < platformRect.right;
+
+        // 衝突矩形が重ならない場合でも、前フレームから今フレームで床の上面を跨いだら着地とみなす
         if (!this.checkCollision(playerRect, platformRect)) {
+            if (player.velocity.y >= 0 && prevBottom <= platformTop && currentBottom >= platformTop && (currentHorizOverlap || prevHorizOverlap)) {
+                return {
+                    isOnGround: true,
+                    collision: {
+                        type: 'ground',
+                        y: platformTop - player.height
+                    }
+                };
+            }
             return { isOnGround: false, collision: null };
         }
 
         // プレイヤーがプラットフォームの上にいるかチェック
         const playerBottom = player.y + player.height;
-        const platformTop = platform.y;
-        const tolerance = 8; // 許容誤差を増加
+        // 許容誤差を落下速度に応じて自動拡大（最大落下速度に基づく）
+        const dynamicTolerance = Math.max(8, Math.abs(player.velocity.y)) + 2;
 
-        if (playerBottom <= platformTop + tolerance && player.velocity.y >= 0) {
+        // 前フレームが床上面より上、かつ現在は床上面近傍以下（上からの接触）
+        if (player.velocity.y >= 0 && prevBottom <= platformTop + dynamicTolerance && playerBottom <= platformTop + dynamicTolerance) {
             return { 
                 isOnGround: true, 
                 collision: { 
@@ -220,7 +294,9 @@ class InputManager {
         this.touchControls = {
             left: false,
             right: false,
-            jump: false
+            jump: false,
+            down: false,
+            dash: false
         };
         
         this.setupKeyboardEvents();
@@ -304,6 +380,9 @@ class InputManager {
         let left = this.isKeyPressed('ArrowLeft') || this.isKeyPressed('KeyA') || this.isTouchControlActive('left');
         let right = this.isKeyPressed('ArrowRight') || this.isKeyPressed('KeyD') || this.isTouchControlActive('right');
         let jump = this.isKeyPressed('Space') || this.isKeyPressed('ArrowUp') || this.isKeyPressed('KeyW') || this.isTouchControlActive('jump');
+        let down = this.isKeyPressed('ArrowDown') || this.isKeyPressed('KeyS') || this.isTouchControlActive('down');
+        // ダッシュはShiftでトグル（モバイルは現状なし）
+        let dash = this.isKeyPressed('ShiftLeft') || this.isKeyPressed('ShiftRight') || this.isTouchControlActive('dash');
 
         // 左右の入力を同時に押した場合の処理（両方無効にする）
         if (left && right) {
@@ -311,7 +390,7 @@ class InputManager {
             right = false;
         }
 
-        return { left, right, jump };
+        return { left, right, jump, down, dash };
     }
 
     /**
@@ -364,14 +443,21 @@ class ParticleSystem {
 
     render(ctx) {
         ctx.save();
+        // 発光（加算合成）
+        ctx.globalCompositeOperation = 'lighter';
         this.particles.forEach(particle => {
             const alpha = particle.life / particle.maxLife;
             ctx.globalAlpha = alpha;
+            ctx.shadowBlur = particle.size * 1.5;
+            ctx.shadowColor = particle.color;
             ctx.fillStyle = particle.color;
             ctx.beginPath();
             ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
             ctx.fill();
         });
+        // 後始末
+        ctx.shadowBlur = 0;
+        ctx.globalCompositeOperation = 'source-over';
         ctx.restore();
     }
 }
@@ -592,5 +678,29 @@ const Utils = {
      */
     toDegrees(radians) {
         return radians * 180 / Math.PI;
+    },
+
+    /**
+     * 安全なラジアルグラデーション生成（非有限値・半径不正をガード）
+     */
+    createSafeRadialGradient(ctx, x0, y0, r0, x1, y1, r1) {
+        const toNum = (v, def = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : def);
+        let _x0 = toNum(x0, 0);
+        let _y0 = toNum(y0, 0);
+        let _r0 = toNum(r0, 1);
+        let _x1 = toNum(x1, 0);
+        let _y1 = toNum(y1, 0);
+        let _r1 = toNum(r1, _r0 + 1);
+        if (!Number.isFinite(_r0) || _r0 <= 0) _r0 = 1;
+        if (!Number.isFinite(_r1) || _r1 <= _r0) _r1 = _r0 + 1;
+        try {
+            return ctx.createRadialGradient(_x0, _y0, _r0, _x1, _y1, _r1);
+        } catch (e) {
+            // 失敗時は線形でフォールバックして描画継続
+            const lg = ctx.createLinearGradient(0, 0, 0, 1);
+            lg.addColorStop(0, 'rgba(0,0,0,0)');
+            lg.addColorStop(1, 'rgba(0,0,0,0)');
+            return lg;
+        }
     }
 };

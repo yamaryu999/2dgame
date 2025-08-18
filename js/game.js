@@ -72,6 +72,12 @@ class Game {
         this.gameOverElement = null;
         this.finalScoreElement = null;
         
+        // コンボ
+        this.combo = { count: 0, timer: 0, windowMs: 1800, multiplierStep: 0.2 };
+        
+        // チェックポイント
+        this.checkpoint = { x: 100, y: 500 };
+        
         // エラーハンドリング
         this.errorHandler = this.handleError.bind(this);
     }
@@ -711,6 +717,12 @@ class Game {
 
         // エフェクト更新
         this.updateEffects(this.deltaTime);
+
+        // コンボタイマー
+        if (this.combo && this.combo.timer > 0) {
+            this.combo.timer = Math.max(0, this.combo.timer - this.deltaTime);
+            if (this.combo.timer === 0) this.combo.count = 0;
+        }
     }
 
     /**
@@ -1177,6 +1189,15 @@ class Game {
         this.ctx.fillStyle = 'white';
         this.ctx.font = '16px Arial';
         this.ctx.fillText(`ハイスコア: ${this.bestScore || 0}`, 125, 30);
+
+        // コンボ表示
+        if (this.combo && this.combo.count > 1) {
+            const text = `COMBO x${(1 + this.combo.multiplierStep * Math.max(0, this.combo.count - 1)).toFixed(1)}`;
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            this.ctx.fillRect(290, 10, 160, 30);
+            this.ctx.fillStyle = 'white';
+            this.ctx.fillText(text, 295, 30);
+        }
     }
 
     /**
@@ -1225,6 +1246,34 @@ class Game {
             this.gameOverElement.style.display = 'block';
         }
     }
+
+    // スコア加算用の倍率（コンボ反映）
+    getScoreWithCombo(base) {
+        if (!this.combo) return base;
+        const mult = 1 + this.combo.multiplierStep * Math.max(0, this.combo.count - 1);
+        return Math.round(base * mult);
+    }
+
+    // コンボを進める（コイン/敵撃破で呼ぶ）
+    bumpCombo(kind = 'coin') {
+        if (!this.combo) return;
+        this.combo.count += 1;
+        // 種別でコンボ受付時間を微調整
+        const win = kind === 'enemy' ? 2200 : 1800;
+        this.combo.timer = win;
+        // フローティングテキスト
+        if (this.player) {
+            const px = this.player.x + this.player.width / 2;
+            const py = this.player.y - 10;
+            const text = `x${(1 + this.combo.multiplierStep * Math.max(0, this.combo.count - 1)).toFixed(1)}`;
+            this.effects.floatingTexts.push({ x: px, y: py, vy: -0.06, timeLeft: 600, duration: 600, text, color: '#FBBF24', size: 18 });
+        }
+    }
+
+    // チェックポイントの設定
+    setCheckpoint(x, y) { this.checkpoint = { x, y }; }
+    // リスポーン位置取得
+    getRespawnPosition() { return this.checkpoint || { x: 100, y: 500 }; }
 
     /**
      * ゲームリスタート

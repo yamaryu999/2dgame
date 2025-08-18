@@ -31,12 +31,31 @@ class Player {
         this.maxAirJumps = 1;
         this.airJumpsRemaining = this.maxAirJumps;
         
+        // ダッシュ
+        this.isDashing = false;
+        this.dashTimer = 0;
+        this.dashCooldownTimer = 0;
+        this.dashDurationMs = 180;
+        this.dashCooldownMs = 700;
+        this.dashSpeed = (typeof PHYSICS !== 'undefined' && PHYSICS.DASH_SPEED) ? PHYSICS.DASH_SPEED : 10;
+        this.dashDirection = 1; // 1: 右, -1: 左
+
+        // 壁スライド/壁ジャンプ
+        this.isTouchingWallLeft = false;
+        this.isTouchingWallRight = false;
+        this.isWallSliding = false;
+        this.wallJumpLockTimer = 0;
+        
         // パワーアップ状態
         this.powerUps = {
             jumpBoost: false,
             jumpBoostTime: 0,
             invincible: false,
-            invincibleTime: 0
+            invincibleTime: 0,
+            dash: false,
+            dashTime: 0,
+            magnet: false,
+            magnetTime: 0
         };
         
         this.animation = this.createAnimation();
@@ -162,8 +181,9 @@ class Player {
         const wantsJump = this.jumpBuffer > 0 && !this.jumpPressed;
         if (wantsJump) {
             const canGroundJump = (this.isOnGround || this.coyoteTime > 0);
-            const canAirJump = !canGroundJump && this.airJumpsRemaining > 0;
-            if (canGroundJump || canAirJump) {
+            const canWallJump = this.isWallSliding;
+            const canAirJump = !canGroundJump && !canWallJump && this.airJumpsRemaining > 0;
+            if (canGroundJump || canWallJump || canAirJump) {
                 // パワーアップ状態に応じてジャンプ力を調整
                 let jumpForce = PHYSICS.JUMP_FORCE;
                 if (this.powerUps.jumpBoost) {
@@ -175,12 +195,18 @@ class Player {
                 this.jumpPressed = true;
                 this.coyoteTime = 0;
                 this.jumpBuffer = 0;
-                if (canAirJump) {
+                if (canWallJump) {
+                    // 壁から離れる方向に速度付与
+                    const away = this.isTouchingWallLeft ? 1 : (this.isTouchingWallRight ? -1 : (this.facingRight ? 1 : -1));
+                    this.velocity.x = (typeof PHYSICS !== 'undefined' && PHYSICS.WALL_JUMP_X) ? PHYSICS.WALL_JUMP_X * away : 6 * away;
+                    this.wallJumpLockTimer = 120; // しばらく壁再接触を無効
+                    this.isWallSliding = false;
+                } else if (canAirJump) {
                     this.airJumpsRemaining = Math.max(0, this.airJumpsRemaining - 1);
                 }
 
                 // ジャンプエフェクト（空中ジャンプは色を変える）
-                const isAir = !canGroundJump;
+                const isAir = !canGroundJump && !canWallJump;
                 const effectColor = isAir ? '#4FC3F7' : (this.powerUps.jumpBoost ? '#00FF00' : '#FFD700');
                 this.particleSystem.createParticle(
                     this.x + this.width / 2,
@@ -227,12 +253,56 @@ class Player {
         }
     }
 
+    handleDash(input, deltaTime) {
+        // 発動
+        if (!this.isDashing && input.dash && this.dashCooldownTimer <= 0) {
+            // 方向決定
+            if (input.left) this.dashDirection = -1; else if (input.right) this.dashDirection = 1; else this.dashDirection = this.facingRight ? 1 : -1;
+            this.isDashing = true;
+            this.dashTimer = this.dashDurationMs * (this.powerUps.dash ? 1.3 : 1);
+            // 初速
+            this.velocity.x = this.dashSpeed * this.dashDirection;
+            // 垂直速度を少し抑える
+            if (this.velocity.y > 0) this.velocity.y *= 0.5;
+        }
+        // 継続中の挙動
+        if (this.isDashing) {
+            this.velocity.x = this.dashSpeed * this.dashDirection;
+        }
+        // クールダウン
+        if (this.dashCooldownTimer > 0) this.dashCooldownTimer -= deltaTime;
+        if (this.isDashing) {
+            this.dashTimer -= deltaTime;
+            if (this.dashTimer <= 0) {
+                this.isDashing = false;
+                this.dashCooldownTimer = this.dashCooldownMs * (this.powerUps.dash ? 0.5 : 1);
+            }
+        }
+    }
+
+    updateWallSlide(input, deltaTime) {
+        // 入力方向に押し付けていて、空中で、接触中ならスライド
+        const pressingLeftWall = this.isTouchingWallLeft && input.left;
+        const pressingRightWall = this.isTouchingWallRight && input.right;
+        this.isWallSliding = !this.isOnGround && (pressingLeftWall || pressingRightWall) && this.velocity.y > 0.05 && this.wallJumpLockTimer <= 0;
+        if (this.isWallSliding) {
+            const maxSlide = (typeof PHYSICS !== 'undefined' && PHYSICS.WALL_SLIDE_SPEED) ? PHYSICS.WALL_SLIDE_SPEED : 2.5;
+            this.velocity.y = Math.min(this.velocity.y, maxSlide);
+            // スライド中は接地扱いしない
+            this.isOnGround = false;
+        }
+        // 次フレーム用に壁接触フラグをリセット（再検出）
+        this.isTouchingWallLeft = false;
+        this.isTouchingWallRight = false;
+        if (this.wallJumpLockTimer > 0) this.wallJumpLockTimer -= deltaTime;
+    }
+
     update(deltaTime, platforms, enemies, coins, powerUps, inputManager) {
         // アニメーション更新
         this.animation.update(deltaTime);
 
         // 入力処理（エラーハンドリング付き）
-        let input = { left: false, right: false, jump: false };
+        let input = { left: false, right: false, jump: false, down: false, dash: false };
         try {
             if (inputManager && typeof inputManager.getMovementInput === 'function') {
                 input = inputManager.getMovementInput();
@@ -243,8 +313,11 @@ class Player {
             console.error('Error getting movement input:', error);
         }
         
-        // 改善された水平移動システム
-        this.handleHorizontalMovement(input, deltaTime);
+        // ダッシュ処理と水平移動
+        this.handleDash?.(input, deltaTime);
+        if (!this.isDashing) {
+            this.handleHorizontalMovement(input, deltaTime);
+        }
 
         // 改善されたジャンプシステム
         this.handleJump(input, deltaTime);
@@ -269,6 +342,7 @@ class Player {
 
         // プラットフォームコリジョン（境界チェックより先に実行）
         this.checkPlatformCollisions(platforms);
+        this.updateWallSlide?.(input, deltaTime);
 
         // 境界チェック（最後に実行）
         this.checkBounds();
@@ -403,6 +477,17 @@ class Player {
                         this.velocity.y = 0;
                 }
             }
+
+            // 壁接触の簡易検出
+            const playerRect = new Rectangle(this.x, this.y, this.width, this.height);
+            const platformRect = new Rectangle(platform.x, platform.y, platform.width, platform.height);
+            const yOverlap = playerRect.bottom > platformRect.top && playerRect.top < platformRect.bottom;
+            const nearLeft = Math.abs(playerRect.right - platformRect.left) < 4;
+            const nearRight = Math.abs(playerRect.left - platformRect.right) < 4;
+            if (!this.isOnGround && yOverlap && this.wallJumpLockTimer <= 0) {
+                if (nearLeft) this.isTouchingWallRight = true;
+                if (nearRight) this.isTouchingWallLeft = true;
+            }
         });
     }
 
@@ -431,7 +516,23 @@ class Player {
         
         for (let i = coins.length - 1; i >= 0; i--) {
             const coin = coins[i];
-            if (coin && !coin.collected && CollisionDetector.checkCoinCollision(this, coin)) {
+            if (!coin || coin.collected) continue;
+            let collected = false;
+            // マグネット収集
+            if (this.powerUps.magnet) {
+                const cx = this.x + this.width / 2;
+                const cy = this.y + this.height / 2;
+                const radius = (typeof PHYSICS !== 'undefined' && PHYSICS.MAGNET_RADIUS) ? PHYSICS.MAGNET_RADIUS : 100;
+                const dist = Utils.distance(cx, cy, coin.x + coin.width / 2, coin.y + coin.height / 2);
+                if (dist <= radius) {
+                    collected = true;
+                }
+            }
+            if (!collected && CollisionDetector.checkCoinCollision(this, coin)) {
+                collected = true;
+            }
+            if (collected) {
+                try { if (window.game && typeof window.game.bumpCombo === 'function') window.game.bumpCombo('coin'); } catch (e) { /* noop */ }
                 this.score += 10;
                 coin.collected = true; // 収集済みフラグを設定
                 coins.splice(i, 1);
@@ -491,6 +592,12 @@ class Player {
             } else if (powerUp.type === 'invincible') {
                 this.powerUps.invincible = true;
                 this.powerUps.invincibleTime = 8000; // 8秒間
+            } else if (powerUp.type === 'dash') {
+                this.powerUps.dash = true;
+                this.powerUps.dashTime = 10000;
+            } else if (powerUp.type === 'magnet') {
+                this.powerUps.magnet = true;
+                this.powerUps.magnetTime = 10000;
             } else {
                 console.warn('Unknown power-up type:', powerUp.type);
             }
@@ -561,8 +668,16 @@ class Player {
         
         // プレイヤーを初期位置にリセット（ライフが残っている場合）
         if (this.lives > 0) {
-            this.x = 100;
-            this.y = 500;
+            try {
+                if (typeof window !== 'undefined' && window.game && typeof window.game.getRespawnPosition === 'function') {
+                    const rp = window.game.getRespawnPosition();
+                    this.x = rp.x;
+                    this.y = rp.y;
+                } else {
+                    this.x = 100;
+                    this.y = 500;
+                }
+            } catch (e) { this.x = 100; this.y = 500; }
             this.velocity = new Vector2(0, 0);
             this.isOnGround = false;
         }
@@ -590,6 +705,7 @@ class Player {
                     if (typeof window !== 'undefined' && window.game) {
                         if (typeof window.game.applyHitstop === 'function') window.game.applyHitstop(90);
                         if (window.game.soundManager) window.game.soundManager.generateSound('enemy_defeat');
+                        if (typeof window.game.bumpCombo === 'function') window.game.bumpCombo('enemy');
                     }
                 } catch (e) { /* noop */ }
                 // 敵撃破エフェクト
@@ -842,7 +958,11 @@ class Player {
             jumpBoost: false,
             jumpBoostTime: 0,
             invincible: false,
-            invincibleTime: 0
+            invincibleTime: 0,
+            dash: false,
+            dashTime: 0,
+            magnet: false,
+            magnetTime: 0
         };
         
         if (this.animation && typeof this.animation.reset === 'function') {
