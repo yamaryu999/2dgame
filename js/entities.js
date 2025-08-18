@@ -21,6 +21,12 @@ class Player {
         this.invulnerableTime = 0;
         this.jumpPressed = false;  // ジャンプボタンの状態
         
+        // 接地猶予＆ジャンプバッファ（ms）
+        this.coyoteTime = 0;
+        this.coyoteTimeMax = 120;
+        this.jumpBuffer = 0;
+        this.jumpBufferMax = 120;
+        
         // パワーアップ状態
         this.powerUps = {
             jumpBoost: false,
@@ -40,17 +46,29 @@ class Player {
             wave: 0
         };
 
+        // 尻尾アニメーション状態
+        this.tailAnimation = {
+            phase: 0,
+            amplitude: 2 // ピクセル単位の振幅
+        };
+
+        // 体バウンス・耳ゆれ・体の傾き
+        this.bodyAnimation = { phase: 0, amplitude: 1.5 };
+        this.earAnimation = { phase: 0, amplitude: 1.5 };
+        this.bodyTiltAngle = 0; // ラジアン
+
         // 接地面の摩擦係数スケール（床タイプで更新）
         this.surfaceFrictionScale = 1.0;
     }
 
     createAnimation() {
         // プレイヤーのアニメーションフレーム（簡易版）
+        const base = (typeof PALETTE !== 'undefined' && PALETTE.entity) ? PALETTE.entity.player : '#F4A261';
         const frames = [
-            { color: '#4A90E2', offset: 0 },
-            { color: '#4A90E2', offset: 2 },
-            { color: '#4A90E2', offset: 0 },
-            { color: '#4A90E2', offset: -2 }
+            { color: base, offset: 0 },
+            { color: base, offset: 2 },
+            { color: base, offset: 0 },
+            { color: base, offset: -2 }
         ];
         return new Animation(frames, 150);
     }
@@ -127,32 +145,46 @@ class Player {
     /**
      * 改善されたジャンプ処理
      */
-    handleJump(input) {
-        // ジャンプ開始
-        if (input.jump && this.isOnGround && !this.jumpPressed) {
+    handleJump(input, deltaTime) {
+        // タイマー更新
+        this.coyoteTime = this.isOnGround ? this.coyoteTimeMax : Math.max(0, this.coyoteTime - deltaTime);
+        if (input.jump) {
+            this.jumpBuffer = this.jumpBufferMax;
+        } else {
+            this.jumpBuffer = Math.max(0, this.jumpBuffer - deltaTime);
+        }
+
+        // ジャンプ開始判定（コヨーテタイム + 入力バッファ）
+        const canJump = (this.isOnGround || this.coyoteTime > 0) && !this.jumpPressed && this.jumpBuffer > 0;
+        if (canJump) {
             // パワーアップ状態に応じてジャンプ力を調整
             let jumpForce = PHYSICS.JUMP_FORCE;
             if (this.powerUps.jumpBoost) {
                 jumpForce *= 1.5; // ジャンプ力1.5倍
             }
-            
+
             this.velocity.y = jumpForce;
             this.isOnGround = false;
             this.jumpPressed = true;
-            
+            this.coyoteTime = 0;
+            this.jumpBuffer = 0;
+
             // ジャンプエフェクト（パワーアップ状態に応じて色を変更）
             const effectColor = this.powerUps.jumpBoost ? '#00FF00' : '#FFD700';
             this.particleSystem.createParticle(
-                this.x + this.width / 2, 
-                this.y + this.height, 
+                this.x + this.width / 2,
+                this.y + this.height,
                 effectColor
             );
+
+            // 簡易ジャンプSFX
+            try { if (typeof window !== 'undefined' && window.game && window.game.soundManager) window.game.soundManager.generateSound('jump'); } catch (e) { /* noop */ }
         }
-        
+
         // ジャンプボタンを離した時の処理
         if (!input.jump) {
             this.jumpPressed = false;
-            
+
             // 短押しジャンプ（ボタンを早く離すと低いジャンプ）- より緩やかに調整
             if (this.velocity.y < 0) {
                 this.velocity.y *= 0.7;
@@ -203,7 +235,7 @@ class Player {
         this.handleHorizontalMovement(input, deltaTime);
 
         // 改善されたジャンプシステム
-        this.handleJump(input);
+        this.handleJump(input, deltaTime);
 
         // 重力適用（環境スケール）
         const env = (typeof window !== 'undefined' && window.game && window.game.environment) ? window.game.environment : null;
@@ -251,6 +283,12 @@ class Player {
 
         // パーティクル更新
         this.particleSystem.update(deltaTime);
+
+        // 尻尾アニメーション更新
+        this.updateTailAnimation(deltaTime);
+
+        // 体バウンス・耳・傾き更新
+        this.updateMovementAnimations(deltaTime);
     }
 
     /**
@@ -329,7 +367,8 @@ class Player {
                 // 床タイプの効果
                 switch (platform.type) {
                     case 'ice':
-                        this.surfaceFrictionScale = 0.5; // 滑りやすい
+                        // ステージ3は滑りを緩和
+                        this.surfaceFrictionScale = (typeof window !== 'undefined' && window.game && window.game.currentStage === 3) ? 0.8 : 0.5;
                         this.velocity.y = 0;
                         break;
                     case 'mud':
@@ -495,6 +534,13 @@ class Player {
         // 無敵状態のチェック（通常の無敵時間とパワーアップ無敵状態の両方をチェック）
         if (this.invulnerable || this.powerUps.invincible) return;
         
+        // 演出トリガ（ゲーム側） - 位置がリセットされる前に呼ぶ
+        try {
+            if (typeof window !== 'undefined' && window.game && typeof window.game.onPlayerDamaged === 'function') {
+                window.game.onPlayerDamaged(this);
+            }
+        } catch (e) { /* noop */ }
+
         this.lives--;
         this.invulnerable = true;
         this.invulnerableTime = 2000; // 2秒間無敵
@@ -525,8 +571,15 @@ class Player {
             // 体力制の敵に対応
             const died = typeof enemy.takeHit === 'function' ? enemy.takeHit() : true;
             if (died) {
-        // 敵撃破エフェクト
-        this.createEnemyDefeatEffect(enemy);
+                // ヒットストップ & SFX
+                try {
+                    if (typeof window !== 'undefined' && window.game) {
+                        if (typeof window.game.applyHitstop === 'function') window.game.applyHitstop(90);
+                        if (window.game.soundManager) window.game.soundManager.generateSound('enemy_defeat');
+                    }
+                } catch (e) { /* noop */ }
+                // 敵撃破エフェクト
+                this.createEnemyDefeatEffect(enemy);
             }
         }
     }
@@ -573,13 +626,13 @@ class Player {
         // プレイヤーの描画
         const frame = this.animation.getCurrentFrame();
         // 猫らしいベースカラー（デフォルトはオレンジ系）
-        let playerColor = '#F4A261';
+        let playerColor = (typeof PALETTE !== 'undefined' && PALETTE.entity) ? PALETTE.entity.player : '#F4A261';
         
         // パワーアップ状態に応じて色を変更
         if (this.powerUps.jumpBoost) {
-            playerColor = '#00FF00'; // 緑色（ジャンプ力向上）
+            playerColor = (typeof PALETTE !== 'undefined' && PALETTE.entity) ? PALETTE.entity.powerJump : '#00FF00';
         } else if (this.powerUps.invincible) {
-            playerColor = '#FFD700'; // 金色（無敵状態）
+            playerColor = (typeof PALETTE !== 'undefined' && PALETTE.entity) ? PALETTE.entity.powerInvincible : '#FFD700';
         }
         
         ctx.fillStyle = playerColor;
@@ -594,19 +647,39 @@ class Player {
         
         // 猫キャラクターの描画（当たり判定サイズは維持）
         const x = this.x;
-        // 祝福中は上下に軽くバウンド
-        const celebrateOffset = this.celebrate.active ? Math.sin(this.celebrate.wave * Math.PI * 2) * -3 : 0;
-        const y = this.y + frame.offset + celebrateOffset;
         const w = this.width;
         const h = this.height;
+        // 祝福中は上下に軽くバウンド + 移動バウンス
+        const celebrateOffset = this.celebrate.active ? Math.sin(this.celebrate.wave * Math.PI * 2) * -3 : 0;
+        const moveBounce = Math.sin(this.bodyAnimation.phase) * (this.bodyAnimation.amplitude * 0.5);
+        const y = this.y + frame.offset + celebrateOffset + moveBounce;
 
-        // 尻尾（曲線）
+        // 体の前傾（進行方向へ）
+        const cx2 = x + w / 2;
+        const cy2 = y + h / 2;
+        this.bodyTiltAngle = this.bodyTiltAngle || 0;
+        const signedTilt = this.bodyTiltAngle * (this.facingRight ? 1 : -1);
+        ctx.translate(cx2, cy2);
+        ctx.rotate(signedTilt);
+        ctx.translate(-cx2, -cy2);
+
+        // 尻尾（曲線：移動時に揺れる）
+        const amp = this.tailAnimation.amplitude;
+        const phase = this.tailAnimation.phase;
+        const waveX = Math.sin(phase) * amp;            // 左右揺れ
+        const waveY = Math.cos(phase * 1.2) * amp * 0.4; // 上下揺れ
         ctx.strokeStyle = '#D17C45';
         ctx.lineWidth = 3;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(x + w - 2, y + h * 0.6);
-        ctx.quadraticCurveTo(x + w + 10, y + h * 0.5, x + w + 14, y + h * 0.2);
+        const baseX = x + w - 2;
+        const baseY = y + h * 0.6;
+        const cpX = x + w + 10 + waveX;
+        const cpY = y + h * 0.5 + waveY;
+        const endX = x + w + 14 + waveX * 0.5;
+        const endY = y + h * 0.2 + waveY * 0.6;
+        ctx.moveTo(baseX, baseY);
+        ctx.quadraticCurveTo(cpX, cpY, endX, endY);
         ctx.stroke();
 
         // 体（楕円）
@@ -615,17 +688,18 @@ class Player {
         ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // 耳（三角形） - 祝福中は少し傾ける
+        // 耳（三角形） - 祝福中は少し傾ける + 移動でゆれる
+        const earWiggle = Math.sin(this.earAnimation.phase) * this.earAnimation.amplitude;
         ctx.beginPath();
-        ctx.moveTo(x + w * 0.2, y + h * 0.15 + (this.celebrate.active ? -1 : 0));
-        ctx.lineTo(x + w * 0.35, y + h * 0.05 + (this.celebrate.active ? -2 : 0));
-        ctx.lineTo(x + w * 0.35, y + h * 0.25);
+        ctx.moveTo(x + w * 0.2, y + h * 0.15 + (this.celebrate.active ? -1 : 0) + earWiggle);
+        ctx.lineTo(x + w * 0.35, y + h * 0.05 + (this.celebrate.active ? -2 : 0) + earWiggle);
+        ctx.lineTo(x + w * 0.35, y + h * 0.25 + earWiggle * 0.3);
         ctx.closePath();
         ctx.fill();
         ctx.beginPath();
-        ctx.moveTo(x + w * 0.8, y + h * 0.15 + (this.celebrate.active ? -1 : 0));
-        ctx.lineTo(x + w * 0.65, y + h * 0.05 + (this.celebrate.active ? -2 : 0));
-        ctx.lineTo(x + w * 0.65, y + h * 0.25);
+        ctx.moveTo(x + w * 0.8, y + h * 0.15 + (this.celebrate.active ? -1 : 0) - earWiggle);
+        ctx.lineTo(x + w * 0.65, y + h * 0.05 + (this.celebrate.active ? -2 : 0) - earWiggle);
+        ctx.lineTo(x + w * 0.65, y + h * 0.25 - earWiggle * 0.3);
         ctx.closePath();
         ctx.fill();
 
@@ -683,6 +757,53 @@ class Player {
         this.particleSystem.render(ctx);
     }
 
+    /**
+     * 尻尾アニメーションの更新（移動速度に応じて振幅・速度を調整）
+     */
+    updateTailAnimation(deltaTime) {
+        const speedRatio = Utils.clamp(Math.abs(this.velocity.x) / PHYSICS.MAX_SPEED, 0, 1);
+        // 目標振幅：停止時は小さく、移動時は大きく。空中では控えめ
+        let targetAmp = this.isOnGround ? Utils.lerp(2, 10, speedRatio) : 4;
+        if (this.celebrate.active) targetAmp = Math.max(targetAmp, 8);
+        // なめらかに追従
+        this.tailAnimation.amplitude = Utils.lerp(this.tailAnimation.amplitude, targetAmp, 0.12);
+        // 角速度（Hz）を移動速度で可変
+        const dt = deltaTime / 1000;
+        const freqHz = 1.2 + speedRatio * 2.0 + (this.celebrate.active ? 0.4 : 0);
+        this.tailAnimation.phase += 2 * Math.PI * freqHz * dt;
+        // 位相の発散防止
+        if (this.tailAnimation.phase > Math.PI * 4) {
+            this.tailAnimation.phase -= Math.PI * 4;
+        }
+    }
+
+    /**
+     * 体のバウンス・耳ゆれ・体の傾きの更新
+     */
+    updateMovementAnimations(deltaTime) {
+        const dt = deltaTime / 1000;
+        const speedRatio = Utils.clamp(Math.abs(this.velocity.x) / PHYSICS.MAX_SPEED, 0, 1);
+
+        // バウンス（上下）
+        const targetBounceAmp = this.isOnGround ? Utils.lerp(1.5, 6.0, speedRatio) : 2.5;
+        this.bodyAnimation.amplitude = Utils.lerp(this.bodyAnimation.amplitude, targetBounceAmp, 0.12);
+        const bounceFreq = 3 + speedRatio * 6; // 3〜9Hz
+        this.bodyAnimation.phase += 2 * Math.PI * bounceFreq * dt;
+        if (this.bodyAnimation.phase > Math.PI * 4) this.bodyAnimation.phase -= Math.PI * 4;
+
+        // 耳ゆれ
+        const targetEarAmp = this.isOnGround ? Utils.lerp(1.5, 4.0, speedRatio) : 2.0;
+        this.earAnimation.amplitude = Utils.lerp(this.earAnimation.amplitude, targetEarAmp, 0.12);
+        const earFreq = 2 + speedRatio * 4; // 2〜6Hz
+        this.earAnimation.phase += 2 * Math.PI * earFreq * dt;
+        if (this.earAnimation.phase > Math.PI * 4) this.earAnimation.phase -= Math.PI * 4;
+
+        // 体の傾き（進行方向へ前傾）
+        const maxTiltRad = Utils.toRadians(6); // 最大6度
+        const targetTilt = maxTiltRad * speedRatio;
+        this.bodyTiltAngle = Utils.lerp(this.bodyTiltAngle, targetTilt, 0.12);
+    }
+
     reset(x, y) {
         this.x = x || 100;
         this.y = y || 500;
@@ -694,6 +815,10 @@ class Player {
         this.invulnerable = false;
         this.invulnerableTime = 0;
         this.jumpPressed = false;
+        
+        // コヨーテタイム/ジャンプバッファをリセット
+        this.coyoteTime = 0;
+        this.jumpBuffer = 0;
         
         // パワーアップ状態をリセット
         this.powerUps = {
@@ -742,21 +867,31 @@ class Enemy {
     createAnimation() {
         // タイプに応じた色味
         let palette;
-        switch (this.type) {
-            case 'jumper':
-                palette = ['#8ED1C4', '#A7E3D5', '#8ED1C4', '#76BDAF'];
-                break;
-            case 'chaser':
-                palette = ['#C39BD3', '#D2B7E5', '#C39BD3', '#A66BBE'];
-                break;
-            case 'flyer':
-                palette = ['#93C5FD', '#BFDBFE', '#93C5FD', '#60A5FA'];
-                break;
-            case 'tank':
-                palette = ['#7D8590', '#9AA1AA', '#7D8590', '#5D636B'];
-                break;
-            default:
-                palette = ['#A3A7AE', '#B5BAC3', '#A3A7AE', '#8F949C'];
+        if (typeof PALETTE !== 'undefined' && PALETTE.enemy) {
+            switch (this.type) {
+                case 'jumper': palette = PALETTE.enemy.jumper; break;
+                case 'chaser': palette = PALETTE.enemy.chaser; break;
+                case 'flyer': palette = PALETTE.enemy.flyer; break;
+                case 'tank': palette = PALETTE.enemy.tank; break;
+                default: palette = PALETTE.enemy.basic;
+            }
+        } else {
+            switch (this.type) {
+                case 'jumper':
+                    palette = ['#8ED1C4', '#A7E3D5', '#8ED1C4', '#76BDAF'];
+                    break;
+                case 'chaser':
+                    palette = ['#C39BD3', '#D2B7E5', '#C39BD3', '#A66BBE'];
+                    break;
+                case 'flyer':
+                    palette = ['#93C5FD', '#BFDBFE', '#93C5FD', '#60A5FA'];
+                    break;
+                case 'tank':
+                    palette = ['#7D8590', '#9AA1AA', '#7D8590', '#5D636B'];
+                    break;
+                default:
+                    palette = ['#A3A7AE', '#B5BAC3', '#A3A7AE', '#8F949C'];
+            }
         }
         const frames = [
             { color: palette[0], offset: 0 },
@@ -906,11 +1041,43 @@ class Enemy {
         const w = this.width;
         const h = this.height;
 
+        // 足元影
+        {
+            const shadowAlpha = 0.18;
+            ctx.save();
+            ctx.globalAlpha = shadowAlpha;
+            ctx.fillStyle = 'black';
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.beginPath();
+            ctx.ellipse(x + w / 2, y + h + 2, w * 0.45, h * 0.18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
         // 体（楕円）
         ctx.fillStyle = frame.color;
         ctx.beginPath();
         ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
         ctx.fill();
+        // アウトライン
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // ハイライト
+        {
+            const gx = x + w * 0.35, gy = y + h * 0.35;
+            const rOuter = Math.max(4, w * 0.6);
+            const grad = (typeof Utils !== 'undefined' && Utils.createSafeRadialGradient)
+                ? Utils.createSafeRadialGradient(ctx, gx, gy, 2, gx, gy, rOuter)
+                : ctx.createRadialGradient(gx, gy, 2, gx, gy, rOuter);
+            grad.addColorStop(0, 'rgba(255,255,255,0.35)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // 耳
         ctx.fillStyle = '#C0C4CC';
@@ -983,13 +1150,18 @@ class Coin {
         ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
         ctx.rotate(Utils.toRadians(frame.rotation));
         ctx.scale(frame.scale, frame.scale);
+
+        // 発光ハロー
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = '#FFD166';
         
         // 魚トークンの描画
         const bodyW = this.width * 0.8;
         const bodyH = this.height * 0.45;
         
         // 身体（楕円）
-        ctx.fillStyle = '#FFD166';
+        ctx.fillStyle = (typeof PALETTE !== 'undefined' && PALETTE.entity) ? PALETTE.entity.coin : '#FFD166';
         ctx.beginPath();
         ctx.ellipse(0, 0, bodyW / 2, bodyH / 2, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -1021,6 +1193,10 @@ class Coin {
         ctx.beginPath();
         ctx.arc(-bodyW * 0.25, -1, 1.6, 0, Math.PI * 2);
         ctx.fill();
+
+        // 後始末
+        ctx.shadowBlur = 0;
+        ctx.globalCompositeOperation = 'source-over';
         
         ctx.restore();
     }
@@ -1055,32 +1231,49 @@ class Platform {
         let color;
         switch (this.type) {
             case 'normal':
-                color = '#8B4513';
+                color = (typeof PALETTE !== 'undefined' && PALETTE.platform) ? PALETTE.platform.normal : '#8B4513';
                 break;
             case 'moving':
-                color = '#A0522D';
+                color = (typeof PALETTE !== 'undefined' && PALETTE.platform) ? PALETTE.platform.moving : '#A0522D';
                 break;
             case 'breakable':
-                color = this.health > 1 ? '#CD853F' : '#8B4513';
+                if (typeof PALETTE !== 'undefined' && PALETTE.platform) {
+                    color = this.health > 1 ? PALETTE.platform.breakableHigh : PALETTE.platform.breakableLow;
+                } else {
+                    color = this.health > 1 ? '#CD853F' : '#8B4513';
+                }
                 break;
             case 'ice':
-                color = '#9DD6F9';
+                color = (typeof PALETTE !== 'undefined' && PALETTE.platform) ? PALETTE.platform.ice : '#9DD6F9';
                 break;
             case 'mud':
-                color = '#6B4F3A';
+                color = (typeof PALETTE !== 'undefined' && PALETTE.platform) ? PALETTE.platform.mud : '#6B4F3A';
                 break;
             case 'bounce':
-                color = '#4ADE80';
+                color = (typeof PALETTE !== 'undefined' && PALETTE.platform) ? PALETTE.platform.bounce : '#4ADE80';
                 break;
             case 'spike':
-                color = '#B91C1C';
+                color = (typeof PALETTE !== 'undefined' && PALETTE.platform) ? PALETTE.platform.spike : '#B91C1C';
                 break;
             default:
-                color = '#8B4513';
+                color = (typeof PALETTE !== 'undefined' && PALETTE.platform) ? PALETTE.platform.normal : '#8B4513';
         }
 
-        ctx.fillStyle = color;
+        // 側面に向かって暗くなるグラデーションで立体感
+        const grad = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+        grad.addColorStop(0, color);
+        grad.addColorStop(1, 'rgba(0,0,0,0.22)');
+        ctx.fillStyle = grad;
         ctx.fillRect(this.x, this.y, this.width, this.height);
+
+        // 天面ハイライト
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(this.x, this.y, this.width, 2);
+
+        // エッジの軽いアウトライン
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(this.x, this.y, this.width, this.height);
 
         // プラットフォームの装飾
         if (this.type === 'ice') {
@@ -1102,10 +1295,6 @@ class Platform {
                 ctx.closePath();
                 ctx.fill();
             }
-        } else {
-        ctx.fillStyle = '#654321';
-        ctx.fillRect(this.x, this.y, this.width, 4);
-        ctx.fillRect(this.x, this.y + this.height - 4, this.width, 4);
         }
     }
 
@@ -1274,31 +1463,65 @@ class Background {
         let top = '#FFE5EC', bottom = '#CDEFFF';
         switch (env.theme) {
             case 'breeze':
-                top = '#E0FBFC'; bottom = '#C2E9FB';
+                if (typeof PALETTE !== 'undefined' && PALETTE.background) { top = PALETTE.background.breeze[0]; bottom = PALETTE.background.breeze[1]; }
                 break;
             case 'snow':
-                top = '#E6F0FF'; bottom = '#F8FBFF';
+                if (typeof PALETTE !== 'undefined' && PALETTE.background) { top = PALETTE.background.snow[0]; bottom = PALETTE.background.snow[1]; }
                 break;
             case 'swamp':
-                top = '#B7E4C7'; bottom = '#95D5B2';
+                if (typeof PALETTE !== 'undefined' && PALETTE.background) { top = PALETTE.background.swamp[0]; bottom = PALETTE.background.swamp[1]; }
                 break;
             case 'volcano':
-                top = '#FFEDD5'; bottom = '#FED7AA';
+                if (typeof PALETTE !== 'undefined' && PALETTE.background) { top = PALETTE.background.volcano[0]; bottom = PALETTE.background.volcano[1]; }
                 break;
             case 'night':
-                top = '#0F172A'; bottom = '#1E293B';
+                if (typeof PALETTE !== 'undefined' && PALETTE.background) { top = PALETTE.background.night[0]; bottom = PALETTE.background.night[1]; }
                 break;
             case 'dusk':
-                top = '#FDE1D3'; bottom = '#C7D2FE';
+                if (typeof PALETTE !== 'undefined' && PALETTE.background) { top = PALETTE.background.dusk[0]; bottom = PALETTE.background.dusk[1]; }
                 break;
             default:
-                top = '#FFE5EC'; bottom = '#CDEFFF';
+                if (typeof PALETTE !== 'undefined' && PALETTE.background) { top = PALETTE.background.day[0]; bottom = PALETTE.background.day[1]; }
         }
         const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
         gradient.addColorStop(0, top);
         gradient.addColorStop(1, bottom);
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
+
+        // 天体（太陽・月と星）
+        if (env.theme === 'night') {
+            // 星
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            for (let i = 0; i < 30; i++) {
+                const sx = (i * 137) % GAME_CONFIG.CANVAS_WIDTH;
+                const sy = (i * 97) % 220;
+                ctx.fillRect(sx, 20 + (sy % 180), 2, 2);
+            }
+            // 月
+            const mx = GAME_CONFIG.CANVAS_WIDTH - 80, my = 70;
+            const mg = (typeof Utils !== 'undefined' && Utils.createSafeRadialGradient)
+                ? Utils.createSafeRadialGradient(ctx, mx - 8, my - 8, 4, mx, my, 26)
+                : ctx.createRadialGradient(mx - 8, my - 8, 4, mx, my, 26);
+            mg.addColorStop(0, 'rgba(255,255,210,0.9)');
+            mg.addColorStop(1, 'rgba(255,255,210,0)');
+            ctx.fillStyle = mg;
+            ctx.beginPath();
+            ctx.arc(mx, my, 26, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // 太陽
+            const sx = GAME_CONFIG.CANVAS_WIDTH - 70, sy = 60;
+            const sg = (typeof Utils !== 'undefined' && Utils.createSafeRadialGradient)
+                ? Utils.createSafeRadialGradient(ctx, sx - 10, sy - 10, 6, sx, sy, 28)
+                : ctx.createRadialGradient(sx - 10, sy - 10, 6, sx, sy, 28);
+            sg.addColorStop(0, 'rgba(255,240,180,0.9)');
+            sg.addColorStop(1, 'rgba(255,240,180,0)');
+            ctx.fillStyle = sg;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 28, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // 肉球雲
         const drawPaw = (cx, cy, s) => {

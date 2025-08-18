@@ -44,6 +44,17 @@ class Game {
             particles: []
         };
 
+        // 被ダメージ演出・画面効果
+        this.effects = {
+            damageFlashAlpha: 0,
+            damageFlashFadeSpeed: 0.06,
+            screenShake: { timeLeft: 0, duration: 0, power: 0 },
+            floatingTexts: [] // { x, y, vy, timeLeft, duration, text, color, size }
+        };
+
+        // ヒットストップ（フレーム凍結）
+        this.hitstop = 0;
+
         // ステージ環境（風・重力・摩擦・テーマ）
         this.environment = {
             windX: 0,           // +右/−左（60FPS基準のフレーム当たり加算）
@@ -51,6 +62,9 @@ class Game {
             frictionScale: 1.0, // 地面摩擦倍率
             theme: 'day'        // 背景テーマ
         };
+        
+        // ベストスコア
+        this.bestScore = Number(localStorage.getItem('bestScore') || 0);
         
         // UI要素
         this.scoreElement = null;
@@ -295,35 +309,36 @@ class Game {
      */
     generateStage3() {
         const stageWidth = 2000;
-        // 氷雪の谷：滑りやすい、やや重い重力
-        this.setEnvironment({ windX: 0, gravityScale: 1.1, frictionScale: 0.8, theme: 'snow' });
+        // 氷雪の谷（難易度緩和版）：滑りは控えめ、重力も標準寄り
+        this.setEnvironment({ windX: 0, gravityScale: 1.0, frictionScale: 1.2, theme: 'snow' });
+        // 氷床ヒント（ダメージは無く滑りやすい）
+        if (typeof this.showHint === 'function') {
+            this.showHint('氷の床はダメージなし。滑りやすいので減速に注意！');
+        }
         
         // 地面
         this.platforms.push(new Platform(0, GAME_CONFIG.CANVAS_HEIGHT - 20, stageWidth, 20, 'ice'));
         
-        // 複雑な配置
-        this.platforms.push(new Platform(200, 450, 100, 20, 'ice'));
-        this.platforms.push(new Platform(400, 350, 100, 20, 'ice'));
-        this.platforms.push(new Platform(600, 250, 100, 20));
-        this.platforms.push(new Platform(800, 150, 100, 20, 'ice'));
-        this.platforms.push(new Platform(1000, 300, 100, 20));
-        this.platforms.push(new Platform(1200, 200, 100, 20, 'ice'));
-        this.platforms.push(new Platform(1400, 400, 100, 20));
-        this.platforms.push(new Platform(1600, 250, 100, 20));
-        this.platforms.push(new Platform(1800, 350, 100, 20));
+        // 配置（緩和）：足場を広く・やや低めに
+        this.platforms.push(new Platform(200, 470, 120, 20, 'ice'));
+        this.platforms.push(new Platform(400, 380, 120, 20, 'ice'));
+        this.platforms.push(new Platform(600, 290, 120, 20));
+        this.platforms.push(new Platform(800, 210, 120, 20, 'ice'));
+        this.platforms.push(new Platform(1000, 330, 120, 20));
+        this.platforms.push(new Platform(1200, 260, 120, 20, 'ice'));
+        this.platforms.push(new Platform(1400, 420, 120, 20));
+        this.platforms.push(new Platform(1600, 290, 120, 20));
+        this.platforms.push(new Platform(1800, 380, 120, 20));
         
-        // 移動プラットフォーム
-        this.platforms.push(new Platform(300, 300, 80, 20, 'moving'));
-        this.platforms.push(new Platform(700, 200, 80, 20, 'moving'));
-        this.platforms.push(new Platform(1100, 100, 80, 20, 'moving'));
+        // 移動プラットフォーム（広く・低め）
+        this.platforms.push(new Platform(300, 330, 100, 20, 'moving'));
+        this.platforms.push(new Platform(700, 260, 100, 20, 'moving'));
+        this.platforms.push(new Platform(1100, 180, 100, 20, 'moving'));
 
-        // 敵
+        // 敵（削減して緩和）
         this.enemies.push(new Enemy(250, 400, 'basic'));
-        this.enemies.push(new Enemy(450, 300, 'chaser'));
         this.enemies.push(new Enemy(650, 200, 'jumper'));
-        this.enemies.push(new Enemy(850, 100, 'flyer'));
-        this.enemies.push(new Enemy(1050, 250, 'tank'));
-        this.enemies.push(new Enemy(1250, 150, 'basic'));
+        this.enemies.push(new Enemy(900, 150, 'flyer'));
 
         // コイン
         this.coins.push(new Coin(250, 400));
@@ -622,6 +637,12 @@ class Game {
      * ゲーム更新
      */
     update() {
+        // ヒットストップ中はロジック更新を停止（描画のみ継続）
+        if (this.hitstop > 0) {
+            this.hitstop = Math.max(0, this.hitstop - this.deltaTime);
+            return;
+        }
+
         // 背景更新
         if (this.background) {
             this.background.update(this.deltaTime, this.player ? this.player.velocity.x : 0);
@@ -687,6 +708,9 @@ class Game {
 
         // デッドエンティティの削除
         this.cleanupDeadEntities();
+
+        // エフェクト更新
+        this.updateEffects(this.deltaTime);
     }
 
     /**
@@ -889,6 +913,16 @@ class Game {
         this.gameOver = true;
         this.isRunning = false;
         
+        // ハイスコア保存
+        try {
+            if (this.player && typeof this.player.score === 'number') {
+                if (this.player.score > (this.bestScore || 0)) {
+                    this.bestScore = this.player.score;
+                    localStorage.setItem('bestScore', String(this.bestScore));
+                }
+            }
+        } catch (e) { console.warn('Failed to save best score', e); }
+        
         const clearDiv = document.createElement('div');
         clearDiv.style.cssText = `
             position: fixed;
@@ -904,9 +938,11 @@ class Game {
             font-size: 28px;
             font-weight: bold;
         `;
+        const bestText = Math.max(this.player.score, this.bestScore || 0);
         clearDiv.innerHTML = `
             <h2>🎉 ゲームクリア！ 🎉</h2>
             <p>最終スコア: ${this.player.score}</p>
+            <p>ハイスコア: ${bestText}</p>
             <button onclick="window.game.restart()" 
                     style="background: white; color: green; border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer; font-size: 18px; margin-top: 20px;">
                 もう一度プレイ
@@ -929,7 +965,15 @@ class Game {
 
         // カメラ変換を適用
         this.ctx.save();
-        this.ctx.translate(-this.cameraX, -this.cameraY);
+        // スクリーンシェイク（被ダメージ時の揺れ）
+        let shakeX = 0, shakeY = 0;
+        if (this.effects && this.effects.screenShake.timeLeft > 0 && this.effects.screenShake.duration > 0) {
+            const t = this.effects.screenShake.timeLeft / this.effects.screenShake.duration;
+            const amplitude = this.effects.screenShake.power * t;
+            shakeX = (Math.random() * 2 - 1) * amplitude;
+            shakeY = (Math.random() * 2 - 1) * amplitude;
+        }
+        this.ctx.translate(-this.cameraX + shakeX, -this.cameraY + shakeY);
 
         // プラットフォーム描画
         if (this.platforms && Array.isArray(this.platforms)) {
@@ -972,11 +1016,139 @@ class Game {
             this.player.render(this.ctx);
         }
 
+        // フローティングテキスト（ワールド座標で描画）
+        if (this.effects && Array.isArray(this.effects.floatingTexts)) {
+            this.effects.floatingTexts.forEach(ft => {
+                const alpha = Math.max(0, ft.timeLeft / ft.duration);
+                this.ctx.save();
+                this.ctx.globalAlpha = alpha;
+                this.ctx.fillStyle = ft.color || '#ffffff';
+                this.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+                this.ctx.lineWidth = 3;
+                this.ctx.font = `bold ${ft.size || 18}px Arial`;
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.strokeText(ft.text, ft.x, ft.y);
+                this.ctx.fillText(ft.text, ft.x, ft.y);
+                this.ctx.restore();
+            });
+        }
+
         // カメラ変換を復元
         this.ctx.restore();
 
         // UI要素（カメラ変換の影響を受けない）
         this.renderUI();
+
+        // ビネット
+        if (typeof this.drawVignette === 'function') {
+            this.drawVignette(this.ctx);
+        }
+
+        // ダメージフラッシュ（赤いフラッシュオーバーレイ）
+        if (this.effects && this.effects.damageFlashAlpha > 0) {
+            this.ctx.save();
+            this.ctx.fillStyle = `rgba(239, 68, 68, ${Math.min(0.45, this.effects.damageFlashAlpha)})`;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.restore();
+        }
+    }
+
+    // 画面周辺減光（視線の中心誘導）
+    drawVignette(ctx) {
+        const w = this.canvas && Number.isFinite(this.canvas.width) ? this.canvas.width : 0;
+        const h = this.canvas && Number.isFinite(this.canvas.height) ? this.canvas.height : 0;
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return;
+        const cx = w / 2, cy = h / 2;
+        let rInner = Math.min(w, h) * 0.45;
+        let rOuter = Math.max(w, h) * 0.75;
+        if (!Number.isFinite(rInner) || rInner <= 0) rInner = 1;
+        if (!Number.isFinite(rOuter) || rOuter <= rInner) rOuter = rInner + 1;
+        const g = (typeof Utils !== 'undefined' && Utils.createSafeRadialGradient)
+            ? Utils.createSafeRadialGradient(ctx, cx, cy, rInner, cx, cy, rOuter)
+            : ctx.createRadialGradient(cx, cy, rInner, cx, cy, rOuter);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(1, 'rgba(0,0,0,0.35)');
+        ctx.save();
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+    }
+
+    /**
+     * 演出の更新（ダメージフラッシュ、スクリーンシェイク、フローティングテキスト）
+     */
+    updateEffects(deltaTime) {
+        if (!this.effects) return;
+        // フラッシュ減衰
+        if (this.effects.damageFlashAlpha > 0) {
+            this.effects.damageFlashAlpha = Math.max(0, this.effects.damageFlashAlpha - this.effects.damageFlashFadeSpeed);
+        }
+        // シェイク時間更新
+        if (this.effects.screenShake.timeLeft > 0) {
+            this.effects.screenShake.timeLeft = Math.max(0, this.effects.screenShake.timeLeft - deltaTime);
+        }
+        // フローティングテキスト更新
+        if (Array.isArray(this.effects.floatingTexts)) {
+            for (let i = this.effects.floatingTexts.length - 1; i >= 0; i--) {
+                const ft = this.effects.floatingTexts[i];
+                ft.timeLeft -= deltaTime;
+                // 上にゆっくり移動
+                ft.y += (ft.vy !== undefined ? ft.vy : -0.04) * deltaTime;
+                if (ft.timeLeft <= 0) this.effects.floatingTexts.splice(i, 1);
+            }
+        }
+    }
+
+    /**
+     * プレイヤー被ダメージ時の演出トリガ
+     */
+    onPlayerDamaged(player) {
+        try {
+            const cx = player.x + player.width / 2;
+            const cy = player.y + player.height / 2 - 10;
+            // フラッシュ
+            this.effects.damageFlashAlpha = 0.6;
+            // シェイク
+            this.effects.screenShake = { timeLeft: 280, duration: 280, power: 6 };
+            // フローティングテキスト
+            this.effects.floatingTexts.push({
+                x: cx,
+                y: cy,
+                vy: -0.06,
+                timeLeft: 600,
+                duration: 600,
+                text: '-1',
+                color: '#FF6B6B',
+                size: 20
+            });
+        } catch (e) {
+            console.error('Failed to trigger damage effect:', e);
+        }
+    }
+
+    /**
+     * 画面上部に小さなヒントを表示
+     */
+    showHint(message, duration = 3500) {
+        try {
+            const hint = document.createElement('div');
+            hint.style.cssText = `
+                position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+                background: rgba(2, 6, 23, 0.82); color: white; padding: 8px 14px; border-radius: 999px;
+                border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+                font-weight: 700; letter-spacing: .2px; z-index: 1000; font-size: 14px; opacity: 0; transition: opacity .2s ease;
+            `;
+            hint.textContent = message;
+            document.body.appendChild(hint);
+            requestAnimationFrame(() => { hint.style.opacity = '1'; });
+            setTimeout(() => {
+                hint.style.opacity = '0';
+                setTimeout(() => hint.remove(), 250);
+            }, duration);
+        } catch (e) {
+            console.error('Failed to show hint:', e);
+        }
     }
 
     /**
@@ -998,6 +1170,13 @@ class Game {
         this.ctx.fillStyle = 'white';
         this.ctx.font = '16px Arial';
         this.ctx.fillText(`ステージ: ${this.currentStage}`, 15, 30);
+
+        // ハイスコア表示
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        this.ctx.fillRect(120, 10, 160, 30);
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText(`ハイスコア: ${this.bestScore || 0}`, 125, 30);
     }
 
     /**
@@ -1031,6 +1210,16 @@ class Game {
         if (this.finalScoreElement) {
             this.finalScoreElement.textContent = this.player.score;
         }
+        
+        // ハイスコア保存
+        try {
+            if (this.player && typeof this.player.score === 'number') {
+                if (this.player.score > (this.bestScore || 0)) {
+                    this.bestScore = this.player.score;
+                    localStorage.setItem('bestScore', String(this.bestScore));
+                }
+            }
+        } catch (e) { console.warn('Failed to save best score', e); }
         
         if (this.gameOverElement) {
             this.gameOverElement.style.display = 'block';
@@ -1149,6 +1338,13 @@ class Game {
             </button>
         `;
         document.body.appendChild(errorDiv);
+    }
+
+    /**
+     * ヒットストップ適用（ms）
+     */
+    applyHitstop(durationMs = 80) {
+        this.hitstop = Math.max(this.hitstop, durationMs);
     }
 
     /**
