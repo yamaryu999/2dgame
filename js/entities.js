@@ -89,13 +89,6 @@ class Player {
         this.stateTime = 0;
         this.squash = { x: 1, y: 1 };
         this.anticipation = { jumpTimer: 0, dashTimer: 0 };
-        // セカンダリ: スカーフ（簡易スプリング）
-        this.scarf = {
-            angle: 0,
-            vel: 0,
-            length: 22,
-            color: '#D946EF' // purple-500
-        };
         // アイドル微動
         this.idleAnim = { breath: 0, blinkTimer: Utils.randomInt(1400, 2800), blinking: false, blinkPhase: 0 };
     }
@@ -497,22 +490,7 @@ class Player {
         this.squash.x = Utils.lerp(this.squash.x, targetX, lerpK);
         this.squash.y = Utils.lerp(this.squash.y, targetY, lerpK);
 
-        // スカーフ更新（速度に追従するスプリング）
-        this.updateScarf(deltaTime);
-    }
-
-    updateScarf(deltaTime) {
-        const dt = deltaTime / 1000;
-        const target = -Math.atan2(0, this.velocity.x || (this.facingRight ? 1 : -1)); // 水平速度に応じて後方へ
-        const stiffness = 18; // ばね
-        const damping = 8; // 減衰
-        const diff = target - this.scarf.angle;
-        const accel = diff * stiffness - this.scarf.vel * damping;
-        this.scarf.vel += accel * dt;
-        this.scarf.angle += this.scarf.vel * dt;
-        // 角度クランプ（過大な振れ防止）
-        const limit = Math.PI / 3;
-        this.scarf.angle = Utils.clamp(this.scarf.angle, -limit, limit);
+        // セカンダリアニメーション（スカーフ）は無効化
     }
 
     /**
@@ -1021,20 +999,7 @@ class Player {
             ctx.fill();
         }
         
-        // セカンダリ: スカーフ
-        ctx.save();
-        ctx.strokeStyle = this.scarf.color;
-        ctx.lineWidth = 3;
-        const base = { x: x + w * 0.5, y: y + h * 0.35 };
-        const tip = {
-            x: base.x - Math.cos(this.scarf.angle) * this.scarf.length * (this.facingRight ? 1 : -1),
-            y: base.y - Math.sin(this.scarf.angle) * this.scarf.length
-        };
-        ctx.beginPath();
-        ctx.moveTo(base.x, base.y);
-        ctx.lineTo(tip.x, tip.y);
-        ctx.stroke();
-        ctx.restore();
+        // セカンダリ: スカーフ描画は不要のため非表示
         
         ctx.restore();
         
