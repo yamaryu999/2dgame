@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>2D プラットフォーマーゲーム</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -54,6 +54,9 @@
             box-shadow: var(--shadow-xl);
             overflow: visible;
             backdrop-filter: blur(6px);
+            /* 4:3のアスペクトを保ちつつ、画面内に収まる幅にスケール */
+            width: min(100vw - 16px, calc((100vh - 180px) * (4 / 3)));
+            max-width: 800px;
         }
 
         #gameCanvas {
@@ -62,6 +65,10 @@
             border-radius: calc(var(--radius) - 6px);
             border: 1px solid rgba(255, 255, 255, 0.16);
             box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            /* 内部解像度(800x600)は維持しつつ、見た目サイズをスケール */
+            width: 100%;
+            height: auto;
+            aspect-ratio: 4 / 3;
         }
 
         .ui-overlay {
@@ -181,7 +188,7 @@
                 top: auto;
                 left: auto;
                 transform: none;
-                bottom: calc(env(safe-area-inset-bottom) + 14px);
+                bottom: max(14px, calc(env(safe-area-inset-bottom) + 8px));
                 background: var(--surface-strong);
                 gap: 12px;
             }

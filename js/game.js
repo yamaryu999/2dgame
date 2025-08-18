@@ -91,7 +91,7 @@ class Game {
             throw new Error('2D context not available');
         }
 
-        // Canvasのサイズを設定
+        // Canvasの内部解像度のみ固定（表示サイズはCSSでスケール）
         this.canvas.width = GAME_CONFIG.CANVAS_WIDTH;
         this.canvas.height = GAME_CONFIG.CANVAS_HEIGHT;
 
