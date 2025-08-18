@@ -709,3 +709,19 @@ const Utils = {
         }
     }
 };
+
+// アニメーション用Easing関数集
+const Easings = {
+    linear(t) { return t; },
+    easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); },
+    easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; },
+    easeOutBack(t, s = 1.70158) {
+        const u = t - 1;
+        return 1 + (s + 1) * (u * u * u) + s * (u * u);
+    },
+    easeOutElastic(t) {
+        if (t === 0 || t === 1) return t;
+        const c4 = (2 * Math.PI) / 3;
+        return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+    }
+};

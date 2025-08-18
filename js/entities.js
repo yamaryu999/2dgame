@@ -82,6 +82,22 @@ class Player {
 
         // 接地面の摩擦係数スケール（床タイプで更新）
         this.surfaceFrictionScale = 1.0;
+
+        // 表現: 状態管理・補間・アンティシペーション
+        this.state = 'idle';
+        this.prevState = 'idle';
+        this.stateTime = 0;
+        this.squash = { x: 1, y: 1 };
+        this.anticipation = { jumpTimer: 0, dashTimer: 0 };
+        // セカンダリ: スカーフ（簡易スプリング）
+        this.scarf = {
+            angle: 0,
+            vel: 0,
+            length: 22,
+            color: '#D946EF' // purple-500
+        };
+        // アイドル微動
+        this.idleAnim = { breath: 0, blinkTimer: Utils.randomInt(1400, 2800), blinking: false, blinkPhase: 0 };
     }
 
     createAnimation() {
@@ -184,15 +200,15 @@ class Player {
             const canWallJump = this.isWallSliding;
             const canAirJump = !canGroundJump && !canWallJump && this.airJumpsRemaining > 0;
             if (canGroundJump || canWallJump || canAirJump) {
-                // パワーアップ状態に応じてジャンプ力を調整
-                let jumpForce = PHYSICS.JUMP_FORCE;
-                if (this.powerUps.jumpBoost) {
-                    jumpForce *= 1.5; // ジャンプ力1.5倍
-                }
-
-                this.velocity.y = jumpForce;
-                this.isOnGround = false;
-                this.jumpPressed = true;
+            // パワーアップ状態に応じてジャンプ力を調整
+            let jumpForce = PHYSICS.JUMP_FORCE;
+            if (this.powerUps.jumpBoost) {
+                jumpForce *= 1.5; // ジャンプ力1.5倍
+            }
+            
+            this.velocity.y = jumpForce;
+            this.isOnGround = false;
+            this.jumpPressed = true;
                 this.coyoteTime = 0;
                 this.jumpBuffer = 0;
                 if (canWallJump) {
@@ -209,20 +225,23 @@ class Player {
                 const isAir = !canGroundJump && !canWallJump;
                 const effectColor = isAir ? '#4FC3F7' : (this.powerUps.jumpBoost ? '#00FF00' : '#FFD700');
                 this.particleSystem.createParticle(
-                    this.x + this.width / 2,
-                    this.y + this.height,
+                    this.x + this.width / 2, 
+                    this.y + this.height, 
                     effectColor
                 );
 
                 // 簡易ジャンプSFX
                 try { if (typeof window !== 'undefined' && window.game && window.game.soundManager) window.game.soundManager.generateSound('jump'); } catch (e) { /* noop */ }
+
+                // アンティシペーション演出開始
+                this.anticipation.jumpTimer = 120;
             }
         }
-
+        
         // ジャンプボタンを離した時の処理
         if (!input.jump) {
             this.jumpPressed = false;
-
+            
             // 短押しジャンプ（ボタンを早く離すと低いジャンプ）- より緩やかに調整
             if (this.velocity.y < 0) {
                 this.velocity.y *= 0.7;
@@ -316,7 +335,7 @@ class Player {
         // ダッシュ処理と水平移動
         this.handleDash?.(input, deltaTime);
         if (!this.isDashing) {
-            this.handleHorizontalMovement(input, deltaTime);
+        this.handleHorizontalMovement(input, deltaTime);
         }
 
         // 改善されたジャンプシステム
@@ -375,6 +394,125 @@ class Player {
 
         // 体バウンス・耳・傾き更新
         this.updateMovementAnimations(deltaTime);
+
+        // 状態と演出の更新
+        this.updateStateAndVisuals(deltaTime, input);
+    }
+
+    /**
+     * 現在の状態判定と見た目の補間更新
+     */
+    updateStateAndVisuals(deltaTime, input) {
+        // 状態推定
+        let next = this.state;
+        if (this.celebrate.active) next = 'celebrate';
+        else if (this.isDashing) next = 'dash';
+        else if (this.isWallSliding) next = 'wallslide';
+        else if (!this.isOnGround && this.velocity.y < -0.1) next = 'jump';
+        else if (!this.isOnGround && this.velocity.y >= -0.1) next = 'fall';
+        else if (Math.abs(this.velocity.x) > 0.15) next = 'run';
+        else next = 'idle';
+
+        if (next !== this.state) {
+            this.prevState = this.state;
+            this.state = next;
+            this.stateTime = 0;
+        } else {
+            this.stateTime += deltaTime;
+        }
+
+        // アンティシペーションのタイマ更新（視覚のみ）
+        if (this.anticipation.jumpTimer > 0) this.anticipation.jumpTimer = Math.max(0, this.anticipation.jumpTimer - deltaTime);
+        if (this.anticipation.dashTimer > 0) this.anticipation.dashTimer = Math.max(0, this.anticipation.dashTimer - deltaTime);
+
+        // アイドル微動（呼吸/瞬き）
+        if (this.state === 'idle') {
+            this.idleAnim.breath += deltaTime * 0.0025; // ゆっくり
+            this.idleAnim.breath = this.idleAnim.breath % (Math.PI * 2);
+            this.idleAnim.blinkTimer -= deltaTime;
+            if (this.idleAnim.blinkTimer <= 0 && !this.idleAnim.blinking) {
+                this.idleAnim.blinking = true;
+                this.idleAnim.blinkPhase = 0;
+                this.idleAnim.blinkTimer = Utils.randomInt(1400, 2800);
+            }
+            if (this.idleAnim.blinking) {
+                this.idleAnim.blinkPhase += deltaTime;
+                if (this.idleAnim.blinkPhase > 140) this.idleAnim.blinking = false; // 140ms まばたき
+            }
+        }
+
+        // スカッシュ＆ストレッチ目標
+        let targetX = 1, targetY = 1;
+        const spd = Math.min(1, Math.abs(this.velocity.x) / PHYSICS.MAX_SPEED);
+        if (this.state === 'run') {
+            // 走りの上下動に合わせた軽い伸縮
+            const runWave = Math.sin(this.bodyAnimation.phase) * 0.06;
+            targetX = 1 + (-runWave) * 0.5;
+            targetY = 1 + (runWave);
+        } else if (this.state === 'dash') {
+            targetX = 1.15;
+            targetY = 0.9;
+        } else if (this.state === 'jump') {
+            targetX = 0.96;
+            targetY = 1.04;
+        } else if (this.state === 'fall') {
+            targetX = 1.02;
+            targetY = 0.98;
+        } else if (this.state === 'wallslide') {
+            targetX = 0.98;
+            targetY = 1.05;
+        } else if (this.state === 'idle') {
+            const breath = Math.sin(this.idleAnim.breath) * 0.03;
+            targetX = 1 - breath * 0.4;
+            targetY = 1 + breath;
+        }
+
+        // ジャンプのアンティシペーション（発動後の短いスクワッシュ→ストレッチ）
+        if (this.anticipation.jumpTimer > 0) {
+            const d = 120; // ms
+            const t = 1 - (this.anticipation.jumpTimer / d);
+            if (t < 0.35) {
+                // 予備動作: しゃがみ
+                const k = Easings.easeOutCubic(t / 0.35);
+                targetX = 1 + 0.08 * k;
+                targetY = 1 - 0.12 * k;
+            } else {
+                // 伸び
+                const k = Easings.easeOutBack((t - 0.35) / 0.65);
+                targetX = 1 - 0.06 * k;
+                targetY = 1 + 0.08 * k;
+            }
+        }
+        // ダッシュの予備動作（短い）
+        if (this.anticipation.dashTimer > 0) {
+            const d = 100;
+            const t = 1 - (this.anticipation.dashTimer / d);
+            const k = Easings.easeOutCubic(Math.min(1, t));
+            targetX = Utils.lerp(targetX, 1.12, k);
+            targetY = Utils.lerp(targetY, 0.92, k);
+        }
+
+        // なめらかに補間
+        const lerpK = 0.18;
+        this.squash.x = Utils.lerp(this.squash.x, targetX, lerpK);
+        this.squash.y = Utils.lerp(this.squash.y, targetY, lerpK);
+
+        // スカーフ更新（速度に追従するスプリング）
+        this.updateScarf(deltaTime);
+    }
+
+    updateScarf(deltaTime) {
+        const dt = deltaTime / 1000;
+        const target = -Math.atan2(0, this.velocity.x || (this.facingRight ? 1 : -1)); // 水平速度に応じて後方へ
+        const stiffness = 18; // ばね
+        const damping = 8; // 減衰
+        const diff = target - this.scarf.angle;
+        const accel = diff * stiffness - this.scarf.vel * damping;
+        this.scarf.vel += accel * dt;
+        this.scarf.angle += this.scarf.vel * dt;
+        // 角度クランプ（過大な振れ防止）
+        const limit = Math.PI / 3;
+        this.scarf.angle = Utils.clamp(this.scarf.angle, -limit, limit);
     }
 
     /**
@@ -674,8 +812,8 @@ class Player {
                     this.x = rp.x;
                     this.y = rp.y;
                 } else {
-                    this.x = 100;
-                    this.y = 500;
+            this.x = 100;
+            this.y = 500;
                 }
             } catch (e) { this.x = 100; this.y = 500; }
             this.velocity = new Vector2(0, 0);
@@ -708,8 +846,8 @@ class Player {
                         if (typeof window.game.bumpCombo === 'function') window.game.bumpCombo('enemy');
                     }
                 } catch (e) { /* noop */ }
-                // 敵撃破エフェクト
-                this.createEnemyDefeatEffect(enemy);
+        // 敵撃破エフェクト
+        this.createEnemyDefeatEffect(enemy);
             }
         }
     }
@@ -790,6 +928,8 @@ class Player {
         this.bodyTiltAngle = this.bodyTiltAngle || 0;
         const signedTilt = this.bodyTiltAngle * (this.facingRight ? 1 : -1);
         ctx.translate(cx2, cy2);
+        // スカッシュ＆ストレッチ
+        ctx.scale(this.squash.x, this.squash.y);
         ctx.rotate(signedTilt);
         ctx.translate(-cx2, -cy2);
 
@@ -880,6 +1020,21 @@ class Player {
             ctx.arc(x + w * 0.75, pawY, 3, 0, Math.PI * 2);
             ctx.fill();
         }
+        
+        // セカンダリ: スカーフ
+        ctx.save();
+        ctx.strokeStyle = this.scarf.color;
+        ctx.lineWidth = 3;
+        const base = { x: x + w * 0.5, y: y + h * 0.35 };
+        const tip = {
+            x: base.x - Math.cos(this.scarf.angle) * this.scarf.length * (this.facingRight ? 1 : -1),
+            y: base.y - Math.sin(this.scarf.angle) * this.scarf.length
+        };
+        ctx.beginPath();
+        ctx.moveTo(base.x, base.y);
+        ctx.lineTo(tip.x, tip.y);
+        ctx.stroke();
+        ctx.restore();
         
         ctx.restore();
         
