@@ -26,6 +26,10 @@ class Player {
         this.coyoteTimeMax = 120;
         this.jumpBuffer = 0;
         this.jumpBufferMax = 120;
+
+        // 二段ジャンプ（空中での追加ジャンプ回数）
+        this.maxAirJumps = 1;
+        this.airJumpsRemaining = this.maxAirJumps;
         
         // パワーアップ状態
         this.powerUps = {
@@ -154,31 +158,39 @@ class Player {
             this.jumpBuffer = Math.max(0, this.jumpBuffer - deltaTime);
         }
 
-        // ジャンプ開始判定（コヨーテタイム + 入力バッファ）
-        const canJump = (this.isOnGround || this.coyoteTime > 0) && !this.jumpPressed && this.jumpBuffer > 0;
-        if (canJump) {
-            // パワーアップ状態に応じてジャンプ力を調整
-            let jumpForce = PHYSICS.JUMP_FORCE;
-            if (this.powerUps.jumpBoost) {
-                jumpForce *= 1.5; // ジャンプ力1.5倍
+        // ジャンプ開始判定（地上/コヨーテ または 二段ジャンプ）
+        const wantsJump = this.jumpBuffer > 0 && !this.jumpPressed;
+        if (wantsJump) {
+            const canGroundJump = (this.isOnGround || this.coyoteTime > 0);
+            const canAirJump = !canGroundJump && this.airJumpsRemaining > 0;
+            if (canGroundJump || canAirJump) {
+                // パワーアップ状態に応じてジャンプ力を調整
+                let jumpForce = PHYSICS.JUMP_FORCE;
+                if (this.powerUps.jumpBoost) {
+                    jumpForce *= 1.5; // ジャンプ力1.5倍
+                }
+
+                this.velocity.y = jumpForce;
+                this.isOnGround = false;
+                this.jumpPressed = true;
+                this.coyoteTime = 0;
+                this.jumpBuffer = 0;
+                if (canAirJump) {
+                    this.airJumpsRemaining = Math.max(0, this.airJumpsRemaining - 1);
+                }
+
+                // ジャンプエフェクト（空中ジャンプは色を変える）
+                const isAir = !canGroundJump;
+                const effectColor = isAir ? '#4FC3F7' : (this.powerUps.jumpBoost ? '#00FF00' : '#FFD700');
+                this.particleSystem.createParticle(
+                    this.x + this.width / 2,
+                    this.y + this.height,
+                    effectColor
+                );
+
+                // 簡易ジャンプSFX
+                try { if (typeof window !== 'undefined' && window.game && window.game.soundManager) window.game.soundManager.generateSound('jump'); } catch (e) { /* noop */ }
             }
-
-            this.velocity.y = jumpForce;
-            this.isOnGround = false;
-            this.jumpPressed = true;
-            this.coyoteTime = 0;
-            this.jumpBuffer = 0;
-
-            // ジャンプエフェクト（パワーアップ状態に応じて色を変更）
-            const effectColor = this.powerUps.jumpBoost ? '#00FF00' : '#FFD700';
-            this.particleSystem.createParticle(
-                this.x + this.width / 2,
-                this.y + this.height,
-                effectColor
-            );
-
-            // 簡易ジャンプSFX
-            try { if (typeof window !== 'undefined' && window.game && window.game.soundManager) window.game.soundManager.generateSound('jump'); } catch (e) { /* noop */ }
         }
 
         // ジャンプボタンを離した時の処理
@@ -364,6 +376,8 @@ class Player {
                 this.isOnGround = true;
                 // より正確な位置修正
                 this.y = Math.min(this.y, collision.collision.y);
+                // 地上に触れたので空中ジャンプ回数を回復
+                this.airJumpsRemaining = this.maxAirJumps;
                 // 床タイプの効果
                 switch (platform.type) {
                     case 'ice':
@@ -819,6 +833,9 @@ class Player {
         // コヨーテタイム/ジャンプバッファをリセット
         this.coyoteTime = 0;
         this.jumpBuffer = 0;
+        // 二段ジャンプ回数を回復
+        this.maxAirJumps = 1;
+        this.airJumpsRemaining = this.maxAirJumps;
         
         // パワーアップ状態をリセット
         this.powerUps = {
