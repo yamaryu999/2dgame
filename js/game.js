@@ -73,7 +73,7 @@ class Game {
         this.finalScoreElement = null;
         
         // コンボ
-        this.combo = { count: 0, timer: 0, windowMs: 1800, multiplierStep: 0.2 };
+        this.combo = { count: 0, timer: 0, windowMs: 1800, multiplierStep: 0.2, maxCount: 0 };
         
         // チェックポイント
         this.checkpoint = { x: 100, y: 500 };
@@ -951,10 +951,12 @@ class Game {
             font-weight: bold;
         `;
         const bestText = Math.max(this.player.score, this.bestScore || 0);
+        const bestComboText = this.combo ? `最大コンボ: x${(1 + this.combo.multiplierStep * Math.max(0, (this.combo.maxCount || 0) - 1)).toFixed(1)}` : '';
         clearDiv.innerHTML = `
             <h2>🎉 ゲームクリア！ 🎉</h2>
             <p>最終スコア: ${this.player.score}</p>
             <p>ハイスコア: ${bestText}</p>
+            <p>${bestComboText}</p>
             <button onclick="window.game.restart()" 
                     style="background: white; color: green; border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer; font-size: 18px; margin-top: 20px;">
                 もう一度プレイ
@@ -1258,6 +1260,7 @@ class Game {
     bumpCombo(kind = 'coin') {
         if (!this.combo) return;
         this.combo.count += 1;
+        this.combo.maxCount = Math.max(this.combo.maxCount || 0, this.combo.count);
         // 種別でコンボ受付時間を微調整
         const win = kind === 'enemy' ? 2200 : 1800;
         this.combo.timer = win;
