@@ -86,7 +86,9 @@
             box-shadow: var(--shadow-md);
         }
 
-        .controls {
+        .controls,
+        .controls-left,
+        .controls-right {
             position: absolute;
             top: 72px;
             left: 50%;
@@ -172,14 +174,24 @@
         }
 
         @media (max-width: 768px) {
-            .controls {
-                top: 56px;
+            /* スマホ：親指操作しやすい配置に */
+            .controls { display: none; }
+            .controls-left,
+            .controls-right {
+                top: auto;
+                left: auto;
+                transform: none;
+                bottom: calc(env(safe-area-inset-bottom) + 14px);
+                background: var(--surface-strong);
+                gap: 12px;
             }
+            .controls-left { left: 14px; }
+            .controls-right { right: 14px; }
             
             .control-btn {
-                width: 52px;
-                height: 52px;
-                font-size: 20px;
+                width: 64px;
+                height: 64px;
+                font-size: 24px;
             }
         }
 
@@ -208,6 +220,13 @@
             <button class="control-btn" id="jumpBtn">↑</button>
             <button class="control-btn" id="rightBtn">→</button>
         </div>
+        <div class="controls-left" aria-hidden="true">
+            <button class="control-btn" id="leftBtn_mobile">←</button>
+            <button class="control-btn" id="rightBtn_mobile">→</button>
+        </div>
+        <div class="controls-right" aria-hidden="true">
+            <button class="control-btn" id="jumpBtn_mobile">⤴︎</button>
+        </div>
         
         <div class="game-over" id="gameOver">
             <h2>ゲームオーバー</h2>
@@ -225,6 +244,26 @@
             try {
                 window.game = new Game();
                 window.game.init();
+
+                // モバイル用ボタンのイベントを既存ボタンにフォワード
+                const pairs = [
+                    ['leftBtn_mobile', 'leftBtn'],
+                    ['rightBtn_mobile', 'rightBtn'],
+                    ['jumpBtn_mobile', 'jumpBtn'],
+                ];
+                pairs.forEach(([srcId, dstId]) => {
+                    const src = document.getElementById(srcId);
+                    const dst = document.getElementById(dstId);
+                    if (!src || !dst) return;
+                    const forward = (type) => (e) => {
+                        e.preventDefault();
+                        dst.dispatchEvent(new Event(type, { bubbles: true }));
+                        if (navigator.vibrate) navigator.vibrate(10);
+                    };
+                    ['touchstart', 'touchend', 'mousedown', 'mouseup', 'mouseleave'].forEach(ev => {
+                        src.addEventListener(ev, forward(ev));
+                    });
+                });
             } catch (error) {
                 console.error('Failed to initialize game:', error);
                 // エラーメッセージを表示
